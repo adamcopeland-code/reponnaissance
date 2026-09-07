@@ -3,7 +3,7 @@
 
 Takes repo slugs (or a search query), returns one JSON object per repo with a
 disqualify verdict and the security/adoption evidence behind it. It does not
-rank and it does not decide -- the calling agent reads the survivors and writes
+rank and it does not decide. The calling agent reads the survivors and writes
 the verdict. This only makes sure the agent is reading the right three repos.
 
 Auth: `gh` for GitHub. deps.dev and OSV are unauthenticated public HTTP.
@@ -55,7 +55,7 @@ def gh(path, jq=None):
 
 
 def http(url, payload=None):
-    """GET, or POST when payload is given. None on any failure -- absence is data here."""
+    """GET, or POST when payload is given. None on any failure, because absence is data here."""
     data = json.dumps(payload).encode() if payload is not None else None
     req = urllib.request.Request(url, data=data, headers=UA)
     try:
@@ -148,7 +148,7 @@ def adoption(system, name):
 
 
 def advisories(ecosystem, name, version):
-    """OSV by package coordinates. Withdrawn advisories are filtered -- the feed carries them."""
+    """OSV by package coordinates. Withdrawn advisories are filtered, because the feed carries them."""
     pkg = {"name": name, "ecosystem": ecosystem}
     body = {"package": pkg, "version": version} if version else {"package": pkg}
     d = http("https://api.osv.dev/v1/query", payload=body)
@@ -186,11 +186,11 @@ def verdict(ev):
     m = ev.get("meta") or {}
 
     if m.get("archived"):
-        reject.append("archived -- no patches will ship")
+        reject.append("archived, so no patches will ship")
     if m.get("fork") and m.get("parent"):
-        reject.append(f"fork of {m['parent']} -- evaluate the parent instead")
+        reject.append(f"fork of {m['parent']}, evaluate the parent instead")
     if not m.get("license"):
-        reject.append("no license -- not safe to depend on")
+        reject.append("no license, not safe to depend on")
 
     sev = {a.get("severity") for a in (ev.get("advisories") or [])}
     if sev & {"critical", "high"}:
@@ -265,7 +265,7 @@ def probe(slug):
         ev["version"] = version_facts(system, name, version)
         ev["adoption"] = adoption(system, name)
         # No default version means the manifest names a package no registry
-        # publishes. OSV answers {} for an unknown package -- identical to
+        # publishes. OSV answers {} for an unknown package, identical to
         # "clean". Refusing to ask is the only way to avoid a false all-clear.
         ev["advisories"] = advisories(ecosystem, name, version) if version else None
     else:
@@ -278,7 +278,7 @@ def probe(slug):
     ps, pd = a.get("pct_stars"), a.get("pct_dependents")
     if ps is not None and pd is not None and abs(ps - pd) > 10:
         ev["stars_disagree"] = (
-            f"stars percentile {ps:.1f} vs dependents percentile {pd:.1f} -- "
+            f"stars percentile {ps:.1f} vs dependents percentile {pd:.1f}, "
             + ("more starred than used" if ps < pd else "more used than starred"))
 
     ev["state"], ev["reasons"] = verdict(ev)
@@ -303,7 +303,7 @@ def selftest():
     arch = {"meta": {"license": "MIT", "archived": True, "stale_days": 900}, "advisories": []}
     st, why = verdict(arch)
     assert st == "reject" and "archived" in why[0], (st, why)
-    # archived must not also report staleness -- one reason, not two for the same fact
+    # archived must not also report staleness. One reason, not two for the same fact
     assert not any("no push" in r for r in why), why
 
     fork = {"meta": {"license": "MIT", "fork": True, "parent": "a/b", "stale_days": 1}, "advisories": []}
