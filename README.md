@@ -66,7 +66,9 @@ by itself, so pair it with your agent's scheduler if you want periodic scans.
 ## What a run looks like
 
 Asked for a nostr relay to self host, on 7 September 2026. Twelve candidates went
-in and four were rejected before anything was read.
+in and four were rejected before anything was read. The probe emits one JSON object
+per repo. What follows is that output summarised, which is what the agent does with
+it before it reads a single line of anyone's code.
 
 ```
 fiatjaf/khatru                reject     archived, so no patches will ship
