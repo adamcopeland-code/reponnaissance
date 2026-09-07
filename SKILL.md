@@ -56,6 +56,11 @@ every rejection, plus:
 | `adoption` | ecosyste.ms | dependent repos/packages and percentile rankings |
 | `stars_disagree` | derived | set when stars and real adoption diverge, always surface it |
 
+`pct_dependents` and `pct_stars` are rankings inside one registry, so they only
+compare candidates from the same ecosystem. Across ecosystems use the raw
+`dependent_repos` count instead. axios sits at percentile 0.05 in npm and gin at
+0.02 in the Go proxy, yet axios has eight times more dependent repos.
+
 Rejections are automatic on `archived`, fork-with-living-parent, missing license,
 or a high or critical unwithdrawn advisory in the current version.
 
