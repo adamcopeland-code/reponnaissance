@@ -82,9 +82,10 @@ mikedilger/chorus             ok         no known issues
 ```
 
 Then the reading step, which is the part metadata cannot do.
-`permissionlesstech/georelays` cleared every filter at 131 stars and a push the
-same day. It is not a relay. It is an HTML page listing other people's relays and
-where they are.
+`permissionlesstech/georelays` cleared every filter at 131 stars and a push the same
+day, and its security line read `not assessed` because it publishes no manifest to
+check. No filter missed it. Every mechanical signal was either clean or absent. It is
+not a relay. It is an HTML page listing other people's relays and where they are.
 
 The verdict was strfry, pushed three days earlier and the most actively maintained
 of the survivors, with one caveat stated rather than buried. Its `not assessed`
