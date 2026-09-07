@@ -68,6 +68,6 @@ schedule by itself; pair it with your agent's scheduler if you want periodic sca
 ## Layout
 
 - `SKILL.md` — the pipeline instructions the agent follows
-- `scripts/probe.sh` — repo list in; disqualify verdict + deps.dev + OSV +
+- `scripts/probe.py` — repo list in; disqualify verdict + deps.dev + OSV +
   provenance JSON out
 - `SPEC.md` — the v1 contract this implements
