@@ -1,0 +1,40 @@
+name: live-check
+
+# The selftest is offline and cannot see API drift. This runs the real pipeline
+# against the real endpoints: monthly, and on every push to main.
+# A failure means one of two things, both worth ten minutes:
+#   - an upstream API changed shape (deps.dev is a v3alpha endpoint)
+#   - a fixture repo changed state (khatru unarchived, the fork deleted)
+
+on:
+  schedule:
+    - cron: "17 6 3 * *"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: offline selftest
+        run: python3 scripts/probe.py --selftest
+      - name: live acceptance pair
+        run: |
+          python3 - <<'EOF'
+          import json, subprocess, sys
+          run = subprocess.run(
+              [sys.executable, "scripts/probe.py", "fiatjaf/khatru", "macko76/ossf-scorecard"],
+              capture_output=True, text=True, check=True)
+          out = json.loads(run.stdout)
+          k = next(r for r in out if r["repo"] == "fiatjaf/khatru")
+          f = next(r for r in out if r["repo"] == "macko76/ossf-scorecard")
+          assert k["state"] == "reject" and any("archived" in x for x in k["reasons"]), k
+          assert f["state"] == "reject" and any("fork" in x for x in f["reasons"]), f
+          print("live acceptance ok")
+          EOF
