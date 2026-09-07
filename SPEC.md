@@ -26,9 +26,9 @@ candidates for fit. Cut the reading step and this skill has no reason to exist.
    - known vulnerability: OSV.dev query, filtering `withdrawn_at`. Reporting a
      withdrawn CVE as live is the bug that costs the skill its credibility.
 3. **Probe survivors.** One `deps.dev` call each: metadata plus the embedded OpenSSF
-   Scorecard. Never call the Scorecard API first; it 404s for every project that did
+   Scorecard. Never call the Scorecard API first. It 404s for every project that did
    not opt in. Adoption comes from ecosyste.ms (`dependent_repos_count` plus
-   percentile rankings; registry names are `npmjs.org`, `proxy.golang.org`,
+   percentile rankings, with registry names `npmjs.org`, `proxy.golang.org`,
    `crates.io`, `pypi.org`). deps.dev `dependentCount` fails for Go modules, the same
    partial-coverage trap as Scorecard. There is no GitHub dependents API. Never
    scrape the HTML page.
@@ -55,7 +55,7 @@ candidates for fit. Cut the reading step and this skill has no reason to exist.
 - The OSV empty-object trap: OSV returns `{}` for a package no registry
   publishes, byte-identical to a clean result. Never query without a resolvable
   published version. An unpublished repo is `not assessed`, not clean. We hit
-  this live in the first build; this line is why it stays caught.
+  this live in the first build, and this line is why it stays caught.
 
 ## Non-goals (also the README's honesty section)
 
@@ -69,7 +69,7 @@ candidates for fit. Cut the reading step and this skill has no reason to exist.
 
 ## Interfaces
 
-`gh` (authenticated raises limits; works unauthenticated), OSV.dev, deps.dev and
+`gh` (works unauthenticated, and authenticating raises the limits), OSV.dev, deps.dev and
 ecosyste.ms (all unauthenticated, none touch GitHub rate limits). No API keys, no
 infrastructure, no state between runs. The probe helper is Python 3 stdlib only.
 Five JSON APIs in bash would mean a `jq` dependency, and Python keeps the verdict
