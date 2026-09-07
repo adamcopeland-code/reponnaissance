@@ -69,9 +69,10 @@ candidates for fit. Cut the reading step and this skill has no reason to exist.
 
 ## Interfaces
 
-`gh` (works unauthenticated, and authenticating raises the limits), OSV.dev, deps.dev and
-ecosyste.ms (all unauthenticated, none touch GitHub rate limits). No API keys, no
-infrastructure, no state between runs. The probe helper is Python 3 stdlib only.
+`gh`, which must be authenticated: `gh api` returns nothing without a token, a fact
+we verified with a clean config dir after shipping the opposite claim. OSV.dev,
+deps.dev and ecosyste.ms need no auth and none of them touch GitHub rate limits.
+No other API keys, no infrastructure, no state between runs. The probe helper is Python 3 stdlib only.
 Five JSON APIs in bash would mean a `jq` dependency, and Python keeps the verdict
 logic a pure function testable offline (`probe.py --selftest`).
 

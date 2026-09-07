@@ -12,7 +12,12 @@ problem, not a scheduling problem.
    and the `macko76/ossf-scorecard` fork could vanish. The fixtures are real
    repos on purpose, which means they age like real repos.
 3. **ecosyste.ms and OSV** response shapes, and `gh` CLI output.
-4. **The trigger description** in `SKILL.md` frontmatter. This one improves with
+4. **Ecosystem coverage.** Packagist, Maven, NuGet and RubyGems are genuinely
+   unreachable through the current probe (found in adversarial testing, not
+   guessed). Adding one is real work with its own registry quirks, so each lands
+   as a deliberate change with its own tests, not a quick patch. Until then,
+   repos in those ecosystems read `not assessed`, which is the honest answer.
+5. **The trigger description** in `SKILL.md` frontmatter. This one improves with
    use rather than breaking. When the skill fails to trigger on a phrasing it
    should catch, add the phrasing.
 

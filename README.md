@@ -48,8 +48,9 @@ cp -r reponnaissance ~/.claude/skills/
 cp -r reponnaissance .claude/skills/
 ```
 
-Requires the `gh` CLI. Authenticating it raises your rate limits but is not required.
-The other data sources (OSV.dev, deps.dev, ecosyste.ms) are free and unauthenticated.
+Requires the `gh` CLI, authenticated (`gh auth login`). Without a token `gh api`
+returns nothing and every repo reads as not found. The other data sources
+(OSV.dev, deps.dev, ecosyste.ms) are free and need no account.
 
 ## Use
 
