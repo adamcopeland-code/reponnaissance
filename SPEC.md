@@ -26,8 +26,10 @@ candidates for fit. Cut the reading step and this skill has no reason to exist.
      CVE reported as live is the credibility-losing bug
 3. **Probe survivors.** One `deps.dev` call each: metadata + the **embedded** OpenSSF
    Scorecard (never the Scorecard API first — it 404s for every project that did not
-   opt in). Adoption from ecosyste.ms `dependent_repos_count` / deps.dev
-   `dependentCount` — **there is no GitHub dependents API; never scrape the HTML page.**
+   opt in). Adoption from **ecosyste.ms** (`dependent_repos_count` + percentile
+   rankings; registry names are `npmjs.org`/`proxy.golang.org`/`crates.io`/`pypi.org`) —
+   deps.dev `dependentCount` fails for Go modules, the same partial-coverage trap as
+   Scorecard. **There is no GitHub dependents API; never scrape the HTML page.**
 4. **Read the top 3.** README, entry points, API shape — judged against the stated
    need. This is the moat and the token spend; do not optimize it away.
 5. **Verdict.** One recommended repo (or an honest "none qualify"), head-to-head
@@ -48,6 +50,10 @@ candidates for fit. Cut the reading step and this skill has no reason to exist.
   plus. Never report absence as a minus.
 - Hand-rolled file checks (e.g. "has SECURITY.md?") are banned — org-level
   `.github` repos make them false-negative. Scorecard already did it right.
+- **The OSV empty-object trap:** OSV returns `{}` for a package no registry
+  publishes — byte-identical to a clean result. Never query without a resolvable
+  published version; an unpublished repo is `not assessed`, not clean. (Caught
+  live in the first build; this line is why it stays caught.)
 
 ## Non-goals (also the README's honesty section)
 
@@ -63,7 +69,9 @@ candidates for fit. Cut the reading step and this skill has no reason to exist.
 
 `gh` (authenticated raises limits; works unauthenticated), OSV.dev and deps.dev and
 ecosyste.ms (all unauthenticated, none touch GitHub rate limits). No API keys, no
-infrastructure, no state between runs.
+infrastructure, no state between runs. The probe helper is Python 3 stdlib only —
+five JSON APIs in bash would mean a `jq` dependency, and Python keeps the verdict
+logic a pure function testable offline (`probe.py --selftest`).
 
 ## Acceptance
 
