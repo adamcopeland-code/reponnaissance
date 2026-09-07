@@ -1,3 +1,5 @@
+<img src="assets/logo.svg" width="76" align="right" alt="">
+
 # Reponnaissance
 
 **Vet a repo before you depend on it.**
