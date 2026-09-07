@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evidence layer for repo discovery: disqualify cheaply, enrich the survivors.
+"""Reponnaissance evidence layer: disqualify cheaply, enrich the survivors.
 
 Takes repo slugs (or a search query), returns one JSON object per repo with a
 disqualify verdict and the security/adoption evidence behind it. It does not

@@ -1,4 +1,6 @@
-# repo-discovery
+# Reponnaissance
+
+**Vet a repo before you depend on it.**
 
 An [Agent Skill](https://docs.claude.com/en/docs/agents/skills) that finds the right
 GitHub repository for a need and tells you whether to depend on it — with evidence.
@@ -37,10 +39,10 @@ Copy the skill folder into your skills directory:
 
 ```sh
 # Claude Code (personal)
-cp -r repo-discovery ~/.claude/skills/
+cp -r reponnaissance ~/.claude/skills/
 
 # or per-project
-cp -r repo-discovery .claude/skills/
+cp -r reponnaissance .claude/skills/
 ```
 
 Requires the `gh` CLI (authenticated raises rate limits; not required). The other

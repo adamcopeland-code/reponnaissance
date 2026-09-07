@@ -1,8 +1,8 @@
-# repo-discovery — v1 specification
+# Reponnaissance — v1 specification
 
-One page. The contract the skill must honor. Evidence behind every constraint:
-`RESEARCH/2026-09-07_REPO_DISCOVERY_SKILL_LANE.md` and `_REPO_SECURITY_CHECK.md`
-in the authors' workspace (all API claims probed live 2026-09-07).
+One page. The contract the skill must honor. Every API claim below was probed
+live against the real endpoints on 2026-09-07; the failure modes named here are
+ones we hit, not ones we anticipated.
 
 ## The job
 

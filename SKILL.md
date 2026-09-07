@@ -1,9 +1,11 @@
 ---
-name: repo-discovery
-description: Find and judge the right GitHub repository for a need, and answer "should I depend on this?" with evidence. Searches, disqualifies dead/forked/vulnerable candidates, then reads the survivors and gives a verdict with maintenance health, real adoption (not stars), license fit and a security check. Use when asked to find a library, pick between repos, evaluate a dependency, check if a project is maintained or safe to adopt, or vet something before adding it to a project. Triggers on "find a library for", "which repo should I use", "is this maintained", "is this safe to depend on", "compare these repos", "vet this dependency", "best X library".
+name: reponnaissance
+description: Reconnaissance on GitHub repositories before you depend on them. Use when asked to find a library, package, tool, or repo for a task, to compare candidates, or to check whether a repo is maintained, widely used, and free of known vulnerabilities. Triggers on "find a library for", "which repo should I use", "is this maintained", "is this safe to depend on", "compare these repos", "vet this dependency", "best X library".
 ---
 
-# repo-discovery
+# Reponnaissance
+
+*Scout the ground before you commit.*
 
 Existing tools search code and return lists. This one returns a **verdict**: which
 repo to use, why, and what would change the answer. `SPEC.md` is the contract;
