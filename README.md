@@ -63,6 +63,33 @@ Ask in plain words.
 The skill triggers on its own inside any agent session. It does not run on a schedule
 by itself, so pair it with your agent's scheduler if you want periodic scans.
 
+## What a run looks like
+
+Asked for a nostr relay to self host, on 7 September 2026. Twelve candidates went
+in and four were rejected before anything was read.
+
+```
+fiatjaf/khatru                reject     archived, so no patches will ship
+fiatjaf/nostr-relay-registry  reject     archived, no license
+mattn/nostr-relay             reject     no license, not safe to depend on
+BlockChainCaffe/Nostr-Rel...  reject     no license, no push in 1284 days
+Yonle/bostr                   concerns   vulnerable, GHSA-5cf7-cxrf-mq73
+hoytech/strfry                ok         not assessed, no package manifest
+cameri/nostream               ok         not assessed, not published on npm
+mikedilger/chorus             ok         no known issues
+```
+
+Then the reading step, which is the part metadata cannot do.
+`permissionlesstech/georelays` cleared every filter at 131 stars and a push the
+same day. It is not a relay. It is an HTML page listing other people's relays and
+where they are.
+
+The verdict was strfry, pushed three days earlier and the most actively maintained
+of the survivors, with one caveat stated rather than buried. Its `not assessed`
+means the repo publishes no package, so OSV has nothing to look up. It does not
+mean clean. `khatru` is the useful rejection, because it is the name most people
+reach for and it has been archived since September 2025.
+
 ## Honest limits
 
 - It reads published metadata and documentation, not code. It is not an audit and
