@@ -9,7 +9,7 @@ the verdict. This only makes sure the agent is reading the right three repos.
 Auth: `gh` for GitHub. deps.dev and OSV are unauthenticated public HTTP.
 
     probe.py owner/repo [owner/repo ...]
-    probe.py --search "nostr relay implementation" --limit 10
+    probe.py --search "nostr relay" "--topic nostr --topic relay" --limit 10
     probe.py --selftest
 """
 import json, re, shlex, subprocess, sys, urllib.error, urllib.parse, urllib.request
@@ -341,19 +341,44 @@ def probe(slug):
     return ev
 
 
-def search(query, limit):
-    """Run a gh repo search. Qualifiers must reach gh as separate argv entries.
+def _argv(query):
+    """A query string -> gh argv. Qualifiers must reach gh as separate entries.
 
     Passing the whole query as one argument makes gh treat `language:swift` as
     literal text: "design system language:swift stars:>500" as one arg returns
     donnemartin/system-design-primer, which is Python. Split, it returns Lona.
-    shlex keeps "quoted phrases" together, which a plain .split() would not.
+    shlex keeps "quoted phrases" together, which a plain .split() would not --
+    but it raises on an unbalanced quote, and an apostrophe is an unbalanced
+    quote. "don't repeat yourself" was a traceback until the fallback.
     """
-    p = subprocess.run(["gh", "search", "repos", *shlex.split(query), "--limit", str(limit),
+    try:
+        return shlex.split(query)
+    except ValueError:
+        return query.split()
+
+
+def search(query, limit):
+    """One gh repo search."""
+    p = subprocess.run(["gh", "search", "repos", *_argv(query), "--limit", str(limit),
                         "--json", "fullName"], capture_output=True, text=True)
     if p.returncode != 0:
         sys.exit(f"gh search failed: {p.stderr.strip()}")
     return [r["fullName"] for r in json.loads(p.stdout)]
+
+
+def search_all(queries, limit):
+    """Union of several phrasings, first-seen order, deduped.
+
+    One phrasing is not a search. `http client language:python` misses psf/requests
+    at 54k stars; `http library language:python` returns it first. One word apart.
+    Topic and keyword searches return near-disjoint sets, so the recipe is a union
+    and this is the thing that runs it -- see scripts/benchmark.py for the numbers.
+    """
+    out = {}
+    for q in queries:
+        for slug in search(q, limit):
+            out.setdefault(slug)
+    return list(out)
 
 
 # --- self-check -------------------------------------------------------------
@@ -424,6 +449,11 @@ def selftest():
     assert security_state({"advisories": None, "scorecard_date": None,
                            "package": {"version": None}}) == "not assessed"
 
+    # An apostrophe is an unbalanced quote. This raised ValueError before the fallback.
+    assert _argv("don't repeat yourself") == ["don't", "repeat", "yourself"]
+    assert _argv('ios "design system"') == ["ios", "design system"]
+    assert _argv("design system language:swift") == ["design", "system", "language:swift"]
+
     print("selftest ok")
 
 
@@ -434,10 +464,12 @@ def main():
     if args[0] == "--selftest":
         return selftest()
     if args[0] == "--search":
-        limit = 10
-        if "--limit" in args:
-            limit = int(args[args.index("--limit") + 1])
-        slugs = search(args[1], limit)
+        limit, rest = 10, args[1:]
+        if "--limit" in rest:
+            i = rest.index("--limit")
+            limit = int(rest[i + 1])
+            rest = rest[:i] + rest[i + 2:]
+        slugs = search_all(rest, limit)
     else:
         slugs = args
     with ThreadPoolExecutor(max_workers=6) as ex:
