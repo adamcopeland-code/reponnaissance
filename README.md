@@ -2,17 +2,19 @@
 
 # Reponnaissance
 
-**Vet a repo before you depend on it.**
+[![live-check](https://github.com/adamcopeland-code/reponnaissance/actions/workflows/live-check.yml/badge.svg)](https://github.com/adamcopeland-code/reponnaissance/actions/workflows/live-check.yml)
 
-An [Agent Skill](https://code.claude.com/docs/en/skills) that finds the right
-GitHub repository for a need and tells you whether to depend on it, with the evidence
-attached.
+Reponnaissance is an [agent skill](https://code.claude.com/docs/en/skills) that picks
+which GitHub repository you should depend on and shows the evidence for the pick. It
+searches, drops the dead and the unlicensed, checks the survivors against OSV and the
+OpenSSF Scorecard, then reads the top three and writes a verdict. It runs inside
+Claude Code or any agent that loads Agent Skills.
 
-Most tools in this lane hand back a list and leave the judging to you. This one gives
-a verdict. It searches, throws out the junk cheaply, reads the top candidates for fit,
-then names one repo, shows its evidence, and says what would change its mind.
+[Install](#install) | [Use](#use) | [A real run](#a-real-run) | [Limitations](#limitations)
 
-## Why not just sort by stars?
+MIT licensed.
+
+## What it checks instead of stars
 
 Stars are the metric every tool has and the one that lies most. From the live probe
 that motivated this skill, the third stars result for nostr relays was archived and
@@ -33,8 +35,8 @@ next to stars so you can see when the two disagree.
    what would change the answer
 
 Security comes back in three states, `vulnerable` (with the GHSA), `hygiene concerns`
-(naming the failed checks), or `not assessed`. Never a score. Most small repos have no
-Scorecard, and pretending otherwise is theatre.
+(naming the failed checks), or `not assessed`. Never a single number. Most small repos
+have no Scorecard at all, so a score would be mostly invented.
 
 ## Install
 
@@ -63,7 +65,7 @@ Ask in plain words.
 The skill triggers on its own inside any agent session. It does not run on a schedule
 by itself, so pair it with your agent's scheduler if you want periodic scans.
 
-## What a run looks like
+## A real run
 
 Asked for a nostr relay to self host, on 7 September 2026. Twelve candidates went
 in and four were rejected before anything was read. The probe emits one JSON object
@@ -88,12 +90,11 @@ check. No filter missed it. Every mechanical signal was either clean or absent. 
 not a relay. It is an HTML page listing other people's relays and where they are.
 
 The verdict was strfry, pushed three days earlier and the most actively maintained
-of the survivors, with one caveat stated rather than buried. Its `not assessed`
-means the repo publishes no package, so OSV has nothing to look up. It does not
-mean clean. `khatru` is the useful rejection, because it is the name most people
+of the survivors. Its `not assessed` means the repo publishes no package, so OSV has
+nothing to look up. It does not mean clean. `khatru` is the useful rejection, because it is the name most people
 reach for and it has been archived since September 2025.
 
-## Honest limits
+## Limitations
 
 - It reads published metadata and documentation, not code. It is not an audit and
   would not have caught a compromised maintainer (event-stream).
