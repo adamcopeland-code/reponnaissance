@@ -45,7 +45,15 @@ which converts *to* markdown and is not what was asked.
 than the thing itself. `--topic swiftui` alone returns a menu bar manager;
 `--topic swiftui --topic design-system` returns `pixiv/charcoal-ios`.
 
-**Do not narrow a generic word with `--language`.** `profiler --language python`
+**`--language` is the implementation language, not the runtime, and it silently
+drops the answer.** `nodemailer` is what any Node developer would name: 17,669
+stars, topic `email`, actively pushed. Seven strategies missed it -- keyword,
+topic pair, smtp keyword, star-sorted -- because every one of them said
+`javascript` and GitHub records nodemailer as **TypeScript**. Drop the filter and
+`--topic email --sort stars` returns it. Never qualify a runtime ask (node, deno,
+bun) by language; for a platform ask, expect both Swift and Objective-C.
+
+**Do not narrow a generic word with `--language` either.** `profiler --language python`
 returns `CellProfiler` and `DataProfiler`, which match a name substring and are not
 profilers. Qualify a specific phrase, not a generic one: `http library
 language:python` returns `psf/requests` first, `http client language:python` never

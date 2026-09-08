@@ -99,6 +99,12 @@ SEARCH_CASES = [
      ["benfred/py-spy", "plasma-umass/scalene", "bloomberg/memray", "joerick/pyinstrument"],
      5000, "the quiet-garbage case: naive returns an image classifier and a hand detector"),
 
+    ("sending emails from node",
+     "library for sending emails from node",
+     ["--topic email --sort stars", "smtp client nodejs"],
+     ["nodemailer/nodemailer"],
+     10000, "nodemailer at 17k, and every javascript-qualified query excludes it"),
+
     ("add charts to a react app",
      "react charts",
      ["chart library language:typescript", "--topic react --topic charts"],
