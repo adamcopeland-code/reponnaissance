@@ -19,19 +19,23 @@ MIT licensed.
 Stars are the metric every tool has and the one that lies most. From the live probe
 that motivated this skill, the third stars result for nostr relays was archived and
 dead, and a zero-star fork of `ossf/scorecard` outranked the real one in a plain web
-search. Both are one API field away from being caught, and this skill reads those
+search. Ranking lies in the other direction too. Ask GitHub for SwiftUI charting and
+`ChartsOrg/Charts` at 28,009 stars does not appear at all, while the curated Swift
+list names it first. Both are one API field away from being caught, and this skill reads those
 fields. Real adoption comes from dependents counts (deps.dev, ecosyste.ms), printed
 next to stars so you can see when the two disagree.
 
 ## What it does
 
 1. Searches with expanded queries (`gh search repos`, one burst, rate-limit aware)
-2. Disqualifies cheaply and cites every rejection. Archived, name-squat forks, stale,
+2. Reads the curated list when search ranks badly. A category GitHub cannot rank is
+   usually one a person has already indexed by hand
+3. Disqualifies cheaply and cites every rejection. Archived, name-squat forks, stale,
    license mismatch, known vulnerabilities (OSV, with withdrawn CVEs filtered out)
-3. Probes the survivors for deps.dev metadata, the embedded OpenSSF Scorecard, and
+4. Probes the survivors for deps.dev metadata, the embedded OpenSSF Scorecard, and
    dependents
-4. Reads the top three (README, entry points, API shape) against *your* need
-5. Delivers a verdict. Recommendation, head-to-head shortlist, security state, and
+5. Reads the top three (README, entry points, API shape) against *your* need
+6. Delivers a verdict. Recommendation, head-to-head shortlist, security state, and
    what would change the answer
 
 Security comes back in three states, `vulnerable` (with the GHSA), `hygiene concerns`
