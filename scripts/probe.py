@@ -12,7 +12,7 @@ Auth: `gh` for GitHub. deps.dev and OSV are unauthenticated public HTTP.
     probe.py --search "nostr relay implementation" --limit 10
     probe.py --selftest
 """
-import json, re, subprocess, sys, urllib.error, urllib.parse, urllib.request
+import json, re, shlex, subprocess, sys, urllib.error, urllib.parse, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 STALE_DAYS = 550  # ~18mo. ponytail: fixed threshold, make it a flag if anyone argues about it.
@@ -342,7 +342,14 @@ def probe(slug):
 
 
 def search(query, limit):
-    p = subprocess.run(["gh", "search", "repos", query, "--limit", str(limit),
+    """Run a gh repo search. Qualifiers must reach gh as separate argv entries.
+
+    Passing the whole query as one argument makes gh treat `language:swift` as
+    literal text: "design system language:swift stars:>500" as one arg returns
+    donnemartin/system-design-primer, which is Python. Split, it returns Lona.
+    shlex keeps "quoted phrases" together, which a plain .split() would not.
+    """
+    p = subprocess.run(["gh", "search", "repos", *shlex.split(query), "--limit", str(limit),
                         "--json", "fullName"], capture_output=True, text=True)
     if p.returncode != 0:
         sys.exit(f"gh search failed: {p.stderr.strip()}")
