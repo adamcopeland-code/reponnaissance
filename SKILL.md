@@ -19,21 +19,55 @@ no reason to exist.
 
 ### 1. Search, expanded
 
-Two to four query variants, not one keyword. Topic, plain keyword, and
-language-qualified. Run both topic and keyword, because they find different
-repos and neither is sufficient. Searching "designing an iOS app", topic search
-surfaced `pixiv/charcoal-ios` and keyword search surfaced `liseami/ChunUI`,
-which carries no topics at all and is invisible to the first.
+Two to four query variants, never one. `probe.py --search` takes several at once and
+dedupes them, so the expansion is one command. The person gives you intent; intent is
+not a query, and translating it decides whether everything downstream is reading the
+right eight repos. Measured: one naive query finds the known answer for 3 of the 7
+intents in `scripts/benchmark.py`, the expanded recipe finds all 7.
 
-**Never pass the person's sentence to the search.** GitHub repo search ANDs every
-word, including "want", "that" and "an", so a natural request collapses the result
-set. "i want a repo that will help with designing an iOS app" returns nothing at
-all. Translate intent into keywords first, always.
+**Never send the sentence.** Sometimes it returns nothing, which is obvious and
+harmless. The dangerous case is when it returns something. "something to make my
+python code faster" returns an image classifier at 43 stars and a hand-detection
+model at 279 — ordinary-looking results with nothing to do with speed, and nothing
+in the output says so. "python profiler" returns `py-spy` at 15,481.
+
+**Write the artifact, not the action.** "markdown to pdf", not "convert markdown to
+pdf". "python profiler", not "make my python faster". Descriptions name what a thing
+is, rarely what you are trying to do with it.
+
+**Run topic and keyword both, always.** They find different repos and neither is
+enough alone. For "make my python code faster", topic search returns `py-spy` and
+`scalene`; the keyword search returns neither. For "convert markdown to pdf" it
+reverses: keyword finds the right tool, topic drifts to `microsoft/markitdown`,
+which converts *to* markdown and is not what was asked.
+
+**Two topics, not one.** A single topic returns whatever is popular nearby rather
+than the thing itself. `--topic swiftui` alone returns a menu bar manager;
+`--topic swiftui --topic design-system` returns `pixiv/charcoal-ios`.
+
+**Do not narrow a generic word with `--language`.** `profiler --language python`
+returns `CellProfiler` and `DataProfiler`, which match a name substring and are not
+profilers. Qualify a specific phrase, not a generic one: `http library
+language:python` returns `psf/requests` first, `http client language:python` never
+returns it at all.
+
+**Sort twice.** Best match and `--sort stars` return different top fives and neither
+is better. On "swiftui components" only three repos appeared in both. Merge and dedupe.
+
+**Say which reading you took.** A vague ask has several honest readings and the
+pipeline cannot rank across them, because they are not competing. Name the one you
+searched and list the others.
 
 ```bash
+python3 scripts/probe.py --search "python profiler" "--topic profiler --language python" --limit 15
 gh search repos "nostr relay" --language rust --limit 20 --json fullName,description,stargazersCount
-gh search repos --topic nostr --topic relay --limit 20 --json fullName
 ```
+
+Quoting matters more than it looks. A query that reaches `gh` as one argument is sent
+to GitHub quoted, and quoted means exact-phrase, which matches the abandoned long
+tail: "tool to convert markdown to pdf" as a phrase returns six repos with zero stars
+between them, and split into words returns `markitdown` at 180k. `probe.py` splits
+for you; a hand-written `gh` call does not.
 
 GitHub search allows 30 requests per minute. Do one burst, then stop searching.
 Everything after this comes from the 5,000/hr core pool or from non-GitHub APIs
@@ -46,7 +80,7 @@ verdict and the evidence behind it.
 
 ```bash
 python3 scripts/probe.py owner/repo owner/repo2 ...
-python3 scripts/probe.py --search "nostr relay implementation" --limit 15
+python3 scripts/probe.py --search "nostr relay" "--topic nostr --topic relay" --limit 15
 ```
 
 Python 3 standard library only. Needs `gh` on PATH and authenticated. deps.dev,

@@ -357,11 +357,20 @@ def _argv(query):
         return query.split()
 
 
-def search(query, limit):
-    """One gh repo search."""
+def search(query, limit, _retry=True):
+    """One gh repo search. Retries once through a rate limit, because search is 30/min.
+
+    Four variants per intent is one burst and fine. A benchmark run, or a second
+    agent on the same token, is not: the 403 arrives mid-run and killing the whole
+    search on it loses the variants that already succeeded.
+    """
     p = subprocess.run(["gh", "search", "repos", *_argv(query), "--limit", str(limit),
                         "--json", "fullName"], capture_output=True, text=True)
     if p.returncode != 0:
+        if _retry and "rate limit" in p.stderr.lower():
+            import time
+            time.sleep(30)  # the search window is per minute, so one pause clears it
+            return search(query, limit, _retry=False)
         sys.exit(f"gh search failed: {p.stderr.strip()}")
     return [r["fullName"] for r in json.loads(p.stdout)]
 

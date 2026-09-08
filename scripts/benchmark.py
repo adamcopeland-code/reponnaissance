@@ -93,6 +93,12 @@ SEARCH_CASES = [
      ["clap-rs/clap"],
      10000, "naive already works here: the expanded recipe must not lose it"),
 
+    ("make my python code faster",
+     "something to make my python code faster",
+     ["python profiler", "--topic profiler --language python"],
+     ["benfred/py-spy", "plasma-umass/scalene", "bloomberg/memray", "joerick/pyinstrument"],
+     5000, "the quiet-garbage case: naive returns an image classifier and a hand detector"),
+
     ("add charts to a react app",
      "react charts",
      ["chart library language:typescript", "--topic react --topic charts"],
