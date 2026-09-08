@@ -113,6 +113,9 @@ SEARCH_CASES = [
 ]
 
 
+READ_DEPTH = 10  # how far down the union an agent actually reads before deciding
+
+
 def stars(slug):
     r = probe.gh(f"/repos/{slug}", jq=".stargazers_count")
     return int(r) if r is not None else 0
@@ -128,23 +131,57 @@ def search_bench():
         got_exp = probe.search_all(expanded, 10)
         hit_n = [s for s in wanted if s in got_naive]
         hit_e = [s for s in wanted if s in got_exp]
+        # Rank, not just recall. An agent reads the top few and stops, so an answer
+        # at position 14 of a 19-repo union is absent in every way that matters.
+        rank = got_exp.index(hit_e[0]) + 1 if hit_e else None
         naive_hits += bool(hit_n)
         expanded_hits += bool(hit_e)
         # The floor is only meaningful on the set we would actually hand to the probe.
         best = max((stars(s) for s in got_exp[:6]), default=0)
-        ok = bool(hit_e) and best >= floor
+        ok = bool(hit_e) and best >= floor and rank <= READ_DEPTH
         fails += not ok
         print(f"  {'PASS' if ok else 'FAIL'}  {intent}")
         print(f"        naive     {naive!r:<45} {'found ' + hit_n[0] if hit_n else 'MISS':>34}"
               f"  ({len(got_naive)} results)")
         print(f"        expanded  {str(expanded):<45} {'found ' + hit_e[0] if hit_e else 'MISS':>34}"
-              f"  ({len(got_exp)} results, best {best:,} stars)")
+              f"  ({len(got_exp)} results, rank {rank}, best {best:,} stars)")
         if not ok:
-            print(f"        -> {'no known answer surfaced' if not hit_e else f'best result {best:,} stars, under the {floor:,} floor'}")
+            why_fail = ("no known answer surfaced" if not hit_e
+                        else f"rank {rank}, past the {READ_DEPTH} an agent reads" if rank > READ_DEPTH
+                        else f"best result {best:,} stars, under the {floor:,} floor")
+            print(f"        -> {why_fail}")
         print(f"        ground truth: {why}")
     n = len(SEARCH_CASES)
     print(f"\n  recall: naive {naive_hits}/{n}, expanded {expanded_hits}/{n}")
-    return fails + phrase_trap()
+    return fails + phrase_trap() + awesome_bench()
+
+
+# (ecosystem, section words, must appear in the extracted set, why)
+#
+# Presence, not rank: awesome lists are alphabetical, so position carries no signal.
+# That is the trade. Search ranks and buries; a curated section does not rank at all
+# but also does not include junk, and every entry still goes through the probe.
+AWESOME_CASES = [
+    ("swift", "chart", "ChartsOrg/Charts",
+     "the search recipe puts AppPear/ChartView at rank 11 and never returns this at all"),
+    ("python", "debug", "benfred/py-spy",
+     "the answer the quiet-garbage intent needs, from a heading the agent never guessed"),
+]
+
+
+def awesome_bench():
+    """Curated lists, for the categories search ranks badly or cannot name."""
+    print("\nAwesome-list mining (curated section vs search ranking)")
+    fails = 0
+    for eco, section, want, why in AWESOME_CASES:
+        src, got = probe.awesome(eco, section)
+        ok = want in got
+        fails += not ok
+        print(f"  {'PASS' if ok else 'FAIL'}  awesome-{eco} [{section}] -> "
+              f"{want} at rank {got.index(want) + 1 if want in got else '-'} of {len(got)}"
+              f"   (via {src})")
+        print(f"        {why}")
+    return fails
 
 
 def phrase_trap():

@@ -62,6 +62,25 @@ returns it at all.
 **Sort twice.** Best match and `--sort stars` return different top fives and neither
 is better. On "swiftui components" only three repos appeared in both. Merge and dedupe.
 
+**When search ranks badly, stop searching and read the curated list.** A category
+GitHub cannot rank is usually one a person has already indexed by hand.
+
+```bash
+python3 scripts/probe.py --awesome swift chart     # awesome-swift, the Chart section
+python3 scripts/probe.py --awesome python debug    # awesome-python, Debugging Tools
+```
+
+It finds the highest-starred `awesome-<ecosystem>` list, takes the repos under the
+headings matching your words, and probes all of them. "swiftui charts" through the
+full recipe puts `AppPear/ChartView` at rank 11 and never returns `ChartsOrg/Charts`
+at 28k stars at all; the Chart section lists both, canonical first. The section
+headings are the vocabulary you were guessing at.
+
+Two things to hold onto. These lists are alphabetical, so position means nothing --
+read the probe verdicts, not the order. And a curated list is a claim, not evidence:
+`ScrollableGraphView` sits in that section at 5,284 stars and comes back with
+concerns. Check the list's own pushed date before trusting its picks.
+
 **Say which reading you took.** A vague ask has several honest readings and the
 pipeline cannot rank across them, because they are not competing. Name the one you
 searched and list the others.

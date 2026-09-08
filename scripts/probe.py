@@ -10,6 +10,7 @@ Auth: `gh` for GitHub. deps.dev and OSV are unauthenticated public HTTP.
 
     probe.py owner/repo [owner/repo ...]
     probe.py --search "nostr relay" "--topic nostr --topic relay" --limit 10
+    probe.py --awesome swift chart
     probe.py --selftest
 """
 import json, re, shlex, subprocess, sys, urllib.error, urllib.parse, urllib.request
@@ -390,6 +391,50 @@ def search_all(queries, limit):
     return list(out)
 
 
+def _awesome_links(text, words):
+    """Repo slugs sitting under a heading that matches any of `words`. Pure, so it is tested.
+
+    Awesome lists are one flat markdown file, so a heading owns every line until the
+    next heading. Matching on the heading rather than the line is what separates
+    "Debugging Tools" from the nine unrelated entries whose blurb says
+    "high-performance".
+    """
+    out, heading = [], ""
+    for line in text.splitlines():
+        h = re.match(r"#{2,4}\s+(.+)", line)
+        if h:
+            heading = h.group(1).lower()
+            continue
+        if not any(w in heading for w in words):
+            continue
+        m = re.search(r"github\.com/([\w.-]+/[\w.-]+?)(?:\.git)?(?:[)\s/#]|$)", line)
+        if m and m.group(1) not in out:
+            out.append(m.group(1))
+    return out
+
+
+def awesome(ecosystem, section, limit=12):
+    """Candidates from the curated list for a category, for when search cannot see it.
+
+    "swiftui charts" through the full search recipe puts AppPear/ChartView at rank 11
+    and never returns ChartsOrg/Charts at all. awesome-swift's Chart section lists six,
+    canonical first, because a person maintains it. Returns (list_slug, candidates).
+
+    A curated list is a claim, not evidence: everything it returns still goes through
+    the probe, and lists go stale -- check the pushed date of the list itself.
+    """
+    words = [w.lower() for w in section.split()]
+    for slug in search(f"awesome {ecosystem} --topic awesome-list --sort stars", 3):
+        blob = gh(f"/repos/{slug}/readme")
+        if not isinstance(blob, dict) or not blob.get("content"):
+            continue
+        import base64
+        found = _awesome_links(base64.b64decode(blob["content"]).decode("utf-8", "replace"), words)
+        if found:
+            return slug, found[:limit]
+    return None, []
+
+
 # --- self-check -------------------------------------------------------------
 
 def selftest():
@@ -463,6 +508,13 @@ def selftest():
     assert _argv('ios "design system"') == ["ios", "design system"]
     assert _argv("design system language:swift") == ["design", "system", "language:swift"]
 
+    # Heading scope, not line matching: the blurb below mentions charts and is skipped.
+    md = ("## Chart\n- [Charts](https://github.com/ChartsOrg/Charts) - the one\n"
+          "- [FL](https://github.com/f/FLCharts.git) - two\n"
+          "## Networking\n- [A](https://github.com/Alamofire/Alamofire) - charts over HTTP\n")
+    assert _awesome_links(md, ["chart"]) == ["ChartsOrg/Charts", "f/FLCharts"], _awesome_links(md, ["chart"])
+    assert _awesome_links(md, ["network"]) == ["Alamofire/Alamofire"]
+
     print("selftest ok")
 
 
@@ -472,7 +524,14 @@ def main():
         sys.exit(__doc__)
     if args[0] == "--selftest":
         return selftest()
-    if args[0] == "--search":
+    if args[0] == "--awesome":
+        if len(args) < 3:
+            sys.exit("usage: probe.py --awesome <ecosystem> <section words>")
+        src, slugs = awesome(args[1], " ".join(args[2:]))
+        if not slugs:
+            sys.exit(f"no awesome list for {args[1]!r} had a section matching {' '.join(args[2:])!r}")
+        print(f"curated by {src}", file=sys.stderr)
+    elif args[0] == "--search":
         limit, rest = 10, args[1:]
         if "--limit" in rest:
             i = rest.index("--limit")
