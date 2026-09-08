@@ -81,9 +81,13 @@ Read the probe verdicts, not the order. And a curated list is a claim, not evide
 `ScrollableGraphView` sits in that section at 5,284 stars and comes back with
 concerns. Check the list's own pushed date before trusting its picks.
 
-**Say which reading you took.** A vague ask has several honest readings and the
-pipeline cannot rank across them, because they are not competing. Name the one you
-searched and list the others.
+**Search every reading, then say which one you took.** A vague ask has several
+honest readings and the pipeline cannot rank across them, because they are not
+competing. Naming them is not enough. "Schedule background jobs in Python" has two,
+and four queries written for the task-queue reading returned celery, rq, huey and
+dramatiq while never once surfacing `APScheduler`, the answer to the other one.
+`task scheduler language:python` finds it at rank 3 and `--topic cron --topic python`
+at rank 1. One variant per reading, then say which you took.
 
 ```bash
 python3 scripts/probe.py --search "python profiler" "--topic profiler --language python" --limit 15

@@ -105,6 +105,12 @@ SEARCH_CASES = [
      ["nodemailer/nodemailer"],
      10000, "nodemailer at 17k, and every javascript-qualified query excludes it"),
 
+    ("schedule background jobs in python",
+     "something to schedule background jobs in python",
+     ["task scheduler language:python", "--topic cron --topic python"],
+     ["agronholm/apscheduler"],
+     1000, "the second reading of the intent: in-process scheduler, not a task queue"),
+
     ("add charts to a react app",
      "react charts",
      ["chart library language:typescript", "--topic react --topic charts"],
@@ -204,6 +210,40 @@ def phrase_trap():
     return not ok
 
 
+# Adoption in the ecosystems that have no vulnerability source. Every one of these
+# read as a blank field until the repository-URL lookup landed, which is the same
+# output a nobody project gets. Security must stay "not assessed": adoption is not
+# safety, and the whole point of the three-state field is that it never guesses.
+ADOPTION = [
+    ("Alamofire/Alamofire", 10000, "cocoapods.org", "29,917 dependent repos, and Swift has no OSV data anywhere"),
+    ("guzzle/guzzle", 100000, "packagist.org", "357,489 dependent repos on Packagist"),
+    # registry None: resolved through the normal path, so the vulnerability check
+    # must have run too. celery publishes from setup.py, which the manifest scan
+    # cannot read, and it came back silent on both counts until the URL lookup.
+    ("celery/celery", 10000, None, "40,119 dependent repos, and setup.py names it nowhere we could read"),
+    ("mher/flower", 1000, None, "3,295 dependent repos, same silent failure"),
+]
+
+
+def adoption_bench():
+    print("\nAdoption and resolution (an unresolved repo reads exactly like a nobody)")
+    fails = 0
+    for slug, floor, registry, why in ADOPTION:
+        r = probe.probe(slug)
+        a = r.get("adoption") or {}
+        got = a.get("dependent_repos") or 0
+        if registry:
+            ok = got >= floor and a.get("registry") == registry and r.get("security") == "not assessed"
+        else:
+            ok = got >= floor and r.get("advisories") is not None
+        fails += not ok
+        print(f"  {'PASS' if ok else 'FAIL'}  {slug:<22} {got:>7,} dependent repos via "
+              f"{a.get('registry') or (r.get('package') or {}).get('ecosystem')}, "
+              f"security {r.get('security')!r}")
+        print(f"        {why}")
+    return fails
+
+
 def check(row):
     slug, want_state, want_sec, _ = row
     r = probe.probe(slug)
@@ -254,6 +294,7 @@ def main():
         failed += not ok
         print(f"  {'PASS' if ok else 'FAIL'}  {name}@{ver} -> {advs if advs != [] else 'clean'}")
 
+    failed += adoption_bench()
     failed += search_bench()
 
     calls = int(before) - int(after) if before and after else 0

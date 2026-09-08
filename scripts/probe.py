@@ -50,6 +50,16 @@ UNSUPPORTED = {"Package.swift": "Swift/SPM", "*.podspec": "CocoaPods",
                "build.gradle": "Java/Maven", "build.gradle.kts": "Java/Maven",
                "*.csproj": "NuGet", "*.gemspec": "Ruby/RubyGems",
                "pubspec.yaml": "Dart/pub"}
+# The ecosyste.ms registries that carry each of them. No vulnerability source exists
+# for these, but adoption does, and adoption is most of what a reader wants: Alamofire
+# is 29,917 dependent repos on CocoaPods and guzzle is 357,489 on Packagist, and both
+# read as a blank field before this. Swift lists three because a Swift project usually
+# publishes to all of them and only CocoaPods counts properly.
+REGISTRY_HINTS = {"Swift/SPM": ("swiftpackageindex.com", "cocoapods.org", "carthage"),
+                  "CocoaPods": ("cocoapods.org",), "PHP/Packagist": ("packagist.org",),
+                  "Java/Maven": ("repo1.maven.org",), "NuGet": ("nuget.org",),
+                  "Ruby/RubyGems": ("rubygems.org",), "Dart/pub": ("pub.dev",)}
+
 # Gemfile and Podfile are deliberately absent. They declare what a project
 # consumes, not what it publishes, and iOS repos carry a Gemfile for Fastlane.
 # Alamofire reported as a Ruby package until they were dropped.
@@ -118,8 +128,73 @@ def coordinates(owner, repo):
         hit = (fname in present if "*" not in fname
                else any(f.endswith(fname[1:]) for f in present))
         if hit:
-            return None, None, f"{eco} package ({fname}), ecosystem not supported yet"
+            return None, eco, f"{eco} package ({fname}), no vulnerability source exists"
     return None, None, "no recognised package manifest at the repo root"
+
+
+# ecosyste.ms registry -> the (deps.dev system, OSV ecosystem) we can vet with.
+LOOKUP_SYSTEMS = {"pypi.org": ("pypi", "PyPI"), "npmjs.org": ("npm", "npm"),
+                  "crates.io": ("cargo", "crates.io"), "proxy.golang.org": ("go", "Go")}
+
+
+def resolve_by_lookup(owner, repo):
+    """Coordinates for a repo whose root manifest we cannot parse. (system, eco, name).
+
+    celery publishes from setup.py, so the manifest scan found nothing and the most
+    used task queue in Python came back with no adoption and no vulnerability check
+    at all, silently. Same for huey, dramatiq and flower. ecosyste.ms knows all four
+    from the repository URL alone: celery is 40,119 dependent repos.
+
+    The guard is an exact name match against the repo name, and it is not optional.
+    facebook/react's lookup leads with `react-addons-shallow-compare` at 13,986
+    dependents, a real deprecated package published out of that monorepo. Taking the
+    most-used answer would run OSV against it and report its advisories as React's.
+    """
+    d = http("https://packages.ecosyste.ms/api/v1/packages/lookup?repository_url="
+             + urllib.parse.quote(f"https://github.com/{owner}/{repo}", safe=""))
+    return _pick_package(d, repo)
+
+
+def _pick_package(items, repo):
+    """The selection half of resolve_by_lookup, kept pure so the guard is tested."""
+    if not isinstance(items, list):
+        return None
+    want = re.sub(r"[^a-z0-9]", "", repo.lower())
+    for pkg in sorted(items, key=lambda x: -(x.get("dependent_repos_count") or 0)):
+        sysec = LOOKUP_SYSTEMS.get((pkg.get("registry") or {}).get("name"))
+        name = pkg.get("name") or ""
+        if sysec and (pkg.get("dependent_repos_count") or 0) > 0 \
+                and re.sub(r"[^a-z0-9]", "", name.lower()) == want:
+            return sysec[0], sysec[1], name
+    return None
+
+
+def registry_adoption(owner, repo, label):
+    """Adoption for an ecosystem we cannot vet, looked up by repository URL.
+
+    One call, and it needs no package name, which matters because these manifests
+    do not carry one in a readable place. Two guards. Only registries that belong
+    to the detected manifest are considered: a lookup on facebook/react answers with
+    a pypi package called `yyyyyy` and an npm `@dothq/react`, both squatting the repo
+    URL and both at zero. And the winner is the highest dependent count rather than
+    the first, because Alamofire's own lookup leads with an unrelated `OndoSDK`.
+    """
+    regs = REGISTRY_HINTS.get(label)
+    if not regs:
+        return {}
+    d = http("https://packages.ecosyste.ms/api/v1/packages/lookup?repository_url="
+             + urllib.parse.quote(f"https://github.com/{owner}/{repo}", safe=""))
+    if not isinstance(d, list):
+        return {}
+    cands = [p for p in d if (p.get("registry") or {}).get("name") in regs
+             and (p.get("dependent_repos_count") or 0) > 0]
+    if not cands:
+        return {}
+    best = max(cands, key=lambda p: p["dependent_repos_count"])
+    return {"dependent_repos": best.get("dependent_repos_count"),
+            "dependent_packages": best.get("dependent_packages_count"),
+            "registry": (best.get("registry") or {}).get("name"),
+            "registry_name": best.get("name")}
 
 
 def scorecard(owner, repo):
@@ -312,6 +387,11 @@ def probe(slug):
 
     coords = coordinates(owner, repo) or (None, None, "could not list the repo root")
     system, ecosystem, name = coords
+    if not system:
+        found = resolve_by_lookup(owner, repo)
+        if found:
+            system, ecosystem, name = found
+            ev["package_source"] = "resolved by repository URL, not declared in the repo root"
     if system:
         version = default_version(system, name)
         ev["package"] = {"system": system, "ecosystem": ecosystem, "name": name, "version": version}
@@ -327,7 +407,10 @@ def probe(slug):
         ev["package"] = None      # publishes no package: OSV has no opinion
         ev["package_reason"] = name
         ev["version"] = {}
-        ev["adoption"] = {}
+        # Adoption is reachable even where vulnerabilities are not. Saying nothing
+        # about a 29,917-dependent library reads as "unknown project", which is a
+        # different and wronger answer than "unvettable ecosystem, widely used".
+        ev["adoption"] = registry_adoption(owner, repo, ecosystem) if ecosystem else {}
         ev["advisories"] = None   # None = unknown. [] = checked and clean.
 
     a = ev.get("adoption") or {}
@@ -514,6 +597,21 @@ def selftest():
           "## Networking\n- [A](https://github.com/Alamofire/Alamofire) - charts over HTTP\n")
     assert _awesome_links(md, ["chart"]) == ["ChartsOrg/Charts", "f/FLCharts"], _awesome_links(md, ["chart"])
     assert _awesome_links(md, ["network"]) == ["Alamofire/Alamofire"]
+
+    # False attribution is the whole risk of resolving by repository URL. React's
+    # own lookup leads with a deprecated package published from the same monorepo.
+    react = [{"registry": {"name": "npmjs.org"}, "name": "react-addons-shallow-compare",
+              "dependent_repos_count": 13986},
+             {"registry": {"name": "nuget.org"}, "name": "react.js", "dependent_repos_count": 92}]
+    assert _pick_package(react, "react") is None, _pick_package(react, "react")
+    cel = [{"registry": {"name": "conda-forge.org"}, "name": "celery", "dependent_repos_count": 21},
+           {"registry": {"name": "pypi.org"}, "name": "celery", "dependent_repos_count": 40119}]
+    assert _pick_package(cel, "celery") == ("pypi", "PyPI", "celery")
+    # Capitalisation and punctuation differ between a repo name and a package name.
+    aps = [{"registry": {"name": "pypi.org"}, "name": "APScheduler", "dependent_repos_count": 6897}]
+    assert _pick_package(aps, "apscheduler") == ("pypi", "PyPI", "APScheduler")
+    # Nothing published, or nothing anyone depends on, stays unresolved.
+    assert _pick_package([{"registry": {"name": "pypi.org"}, "name": "x", "dependent_repos_count": 0}], "x") is None
 
     print("selftest ok")
 
