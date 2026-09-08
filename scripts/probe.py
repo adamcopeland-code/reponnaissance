@@ -44,10 +44,14 @@ REGISTRIES = {"go": "proxy.golang.org", "npm": "npmjs.org",
 # Manifests we can read the coordinates out of, but whose ecosystem is not wired up
 # yet. Naming the ecosystem is the honest answer. Saying "no manifest found" reads as
 # "this repo publishes nothing", which is wrong for guzzle, okhttp, feign and symfony.
-UNSUPPORTED = {"composer.json": "PHP/Packagist", "pom.xml": "Java/Maven",
+UNSUPPORTED = {"Package.swift": "Swift/SPM", "*.podspec": "CocoaPods",
+               "composer.json": "PHP/Packagist", "pom.xml": "Java/Maven",
                "build.gradle": "Java/Maven", "build.gradle.kts": "Java/Maven",
-               "Gemfile": "Ruby/RubyGems", "*.gemspec": "Ruby/RubyGems",
-               "*.csproj": "NuGet", "pubspec.yaml": "Dart/pub"}
+               "*.csproj": "NuGet", "*.gemspec": "Ruby/RubyGems",
+               "pubspec.yaml": "Dart/pub"}
+# Gemfile and Podfile are deliberately absent. They declare what a project
+# consumes, not what it publishes, and iOS repos carry a Gemfile for Fastlane.
+# Alamofire reported as a Ruby package until they were dropped.
 
 
 def _re1(pat, text):
@@ -285,6 +289,9 @@ def probe(slug):
         "license": (r.get("license") or {}).get("spdx_id"),
         "pushed_at": r.get("pushed_at"), "stale_days": days_since(r.get("pushed_at")),
         "description": r.get("description"), "watchers": r.get("subscribers_count"),
+        # Topics lie about platform. heroui-native and compose-unstyled both carry
+        # the "ios" topic and are TypeScript and Kotlin. The language field does not.
+        "language": r.get("language"), "topics": r.get("topics") or [],
     }
 
     proj, sc = scorecard(owner, repo)

@@ -20,7 +20,15 @@ no reason to exist.
 ### 1. Search, expanded
 
 Two to four query variants, not one keyword. Topic, plain keyword, and
-language-qualified:
+language-qualified. Run both topic and keyword, because they find different
+repos and neither is sufficient. Searching "designing an iOS app", topic search
+surfaced `pixiv/charcoal-ios` and keyword search surfaced `liseami/ChunUI`,
+which carries no topics at all and is invisible to the first.
+
+**Never pass the person's sentence to the search.** GitHub repo search ANDs every
+word, including "want", "that" and "an", so a natural request collapses the result
+set. "i want a repo that will help with designing an iOS app" returns nothing at
+all. Translate intent into keywords first, always.
 
 ```bash
 gh search repos "nostr relay" --language rust --limit 20 --json fullName,description,stargazersCount
@@ -70,6 +78,24 @@ For every survivor, read the README, the entry point and the public API shape,
 judged against the stated need rather than in the abstract. No scoring service
 knows what you are building. This is the only step that does. Report what the API
 actually looks like rather than that it exists.
+
+Check the platform claim against `meta.language`, not against topics. Topics are
+self-declared and routinely wrong. On "designing an iOS app" the two highest
+starred results were `heroui-native` at 3,636 stars, which is TypeScript and
+React Native, and `compose-unstyled` at 1,218, which is Kotlin. Both carry the
+`ios` topic. A third, `genjutsu` at 333 stars, is tagged `swiftui` and is a
+Python collection of creative-coding prompts. Ranking by stars hands back all
+three.
+
+### 4b. If the need is vague, say which reading you took
+
+A request like "a repo to help with designing an iOS app" has at least four
+honest interpretations: a UI component library, a design-token system, a
+reference collection, or an agent skill. The pipeline returns all four kinds and
+cannot rank across them, because they are not competing. Name the interpretation
+you chose, give the verdict inside it, and list the other readings in one line
+each so the person can redirect you. Do not silently pick one and present it as
+the answer.
 
 ### 5. Verdict
 
