@@ -4,7 +4,7 @@
 
 **Vet a repo before you depend on it.**
 
-An [Agent Skill](https://docs.claude.com/en/docs/agents/skills) that finds the right
+An [Agent Skill](https://code.claude.com/docs/en/skills) that finds the right
 GitHub repository for a need and tells you whether to depend on it, with the evidence
 attached.
 
