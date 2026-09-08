@@ -183,7 +183,7 @@ def advisories(ecosystem, name, version):
         if v.get("withdrawn"):
             continue
         # The same vulnerability appears once per database. GO-2021-0052 and
-        # GHSA-h395-qcrw-5vmq are one bug; without this the count is inflated.
+        # GHSA-h395-qcrw-5vmq are one bug. Without this the count is inflated.
         ids = {v["id"]} | set(v.get("aliases") or [])
         if ids & seen:
             continue
