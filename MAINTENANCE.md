@@ -17,6 +17,13 @@ problem, not a scheduling problem.
    guessed). Adding one is real work with its own registry quirks, so each lands
    as a deliberate change with its own tests, not a quick patch. Until then,
    repos in those ecosystems read `not assessed`, which is the honest answer.
+   Swift is its own case: no vulnerability database covers Swift packages at
+   all (deps.dev 404s, OSV's Swift ecosystem is empty), so on Apple work the
+   probe gives maintenance, license and archive signal only, and says so.
+   The concrete first step when this gets attention: CocoaPods adoption is
+   already reachable through ecosyste.ms (probed: Alamofire reads 29,917
+   dependent repos), so Apple work can gain a real adoption signal without
+   waiting on a vulnerability source that does not exist yet.
 5. **The trigger description** in `SKILL.md` frontmatter. This one improves with
    use rather than breaking. When the skill fails to trigger on a phrasing it
    should catch, add the phrasing.
