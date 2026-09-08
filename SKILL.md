@@ -20,7 +20,7 @@ no reason to exist.
 ### 1. Search, expanded
 
 Two to four query variants, never one. `probe.py --search` takes several at once and
-dedupes them, so the expansion is one command. The person gives you intent; intent is
+dedupes them, so the expansion is one command. The person gives you intent. Intent is
 not a query, and translating it decides whether everything downstream is reading the
 right eight repos. Measured: one naive query finds the known answer for 3 of the 7
 intents in `scripts/benchmark.py`, the expanded recipe finds all 7.
@@ -28,7 +28,7 @@ intents in `scripts/benchmark.py`, the expanded recipe finds all 7.
 **Never send the sentence.** Sometimes it returns nothing, which is obvious and
 harmless. The dangerous case is when it returns something. "something to make my
 python code faster" returns an image classifier at 43 stars and a hand-detection
-model at 279 — ordinary-looking results with nothing to do with speed, and nothing
+model at 279. Ordinary-looking results with nothing to do with speed, and nothing
 in the output says so. "python profiler" returns `py-spy` at 15,481.
 
 **Write the artifact, not the action.** "markdown to pdf", not "convert markdown to
@@ -37,21 +37,21 @@ is, rarely what you are trying to do with it.
 
 **Run topic and keyword both, always.** They find different repos and neither is
 enough alone. For "make my python code faster", topic search returns `py-spy` and
-`scalene`; the keyword search returns neither. For "convert markdown to pdf" it
+`scalene`, and the keyword search returns neither. For "convert markdown to pdf" it
 reverses: keyword finds the right tool, topic drifts to `microsoft/markitdown`,
 which converts *to* markdown and is not what was asked.
 
 **Two topics, not one.** A single topic returns whatever is popular nearby rather
-than the thing itself. `--topic swiftui` alone returns a menu bar manager;
+than the thing itself. `--topic swiftui` alone returns a menu bar manager, while
 `--topic swiftui --topic design-system` returns `pixiv/charcoal-ios`.
 
 **`--language` is the implementation language, not the runtime, and it silently
 drops the answer.** `nodemailer` is what any Node developer would name: 17,669
-stars, topic `email`, actively pushed. Seven strategies missed it -- keyword,
-topic pair, smtp keyword, star-sorted -- because every one of them said
+stars, topic `email`, actively pushed. Seven strategies missed it, keyword and
+topic pair and smtp keyword and star-sorted, because every one of them said
 `javascript` and GitHub records nodemailer as **TypeScript**. Drop the filter and
 `--topic email --sort stars` returns it. Never qualify a runtime ask (node, deno,
-bun) by language; for a platform ask, expect both Swift and Objective-C.
+bun) by language. For a platform ask, expect both Swift and Objective-C.
 
 **Do not narrow a generic word with `--language` either.** `profiler --language python`
 returns `CellProfiler` and `DataProfiler`, which match a name substring and are not
@@ -73,11 +73,11 @@ python3 scripts/probe.py --awesome python debug    # awesome-python, Debugging T
 It finds the highest-starred `awesome-<ecosystem>` list, takes the repos under the
 headings matching your words, and probes all of them. "swiftui charts" through the
 full recipe puts `AppPear/ChartView` at rank 11 and never returns `ChartsOrg/Charts`
-at 28k stars at all; the Chart section lists both, canonical first. The section
+at 28k stars at all. The Chart section lists both, canonical first, and the section
 headings are the vocabulary you were guessing at.
 
-Two things to hold onto. These lists are alphabetical, so position means nothing --
-read the probe verdicts, not the order. And a curated list is a claim, not evidence:
+Two things to hold onto. These lists are alphabetical, so position means nothing.
+Read the probe verdicts, not the order. And a curated list is a claim, not evidence:
 `ScrollableGraphView` sits in that section at 5,284 stars and comes back with
 concerns. Check the list's own pushed date before trusting its picks.
 
@@ -94,7 +94,7 @@ Quoting matters more than it looks. A query that reaches `gh` as one argument is
 to GitHub quoted, and quoted means exact-phrase, which matches the abandoned long
 tail: "tool to convert markdown to pdf" as a phrase returns six repos with zero stars
 between them, and split into words returns `markitdown` at 180k. `probe.py` splits
-for you; a hand-written `gh` call does not.
+for you. A hand-written `gh` call does not.
 
 GitHub search allows 30 requests per minute. Do one burst, then stop searching.
 Everything after this comes from the 5,000/hr core pool or from non-GitHub APIs

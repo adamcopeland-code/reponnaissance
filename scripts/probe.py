@@ -380,9 +380,9 @@ def search_all(queries, limit):
     """Union of several phrasings, first-seen order, deduped.
 
     One phrasing is not a search. `http client language:python` misses psf/requests
-    at 54k stars; `http library language:python` returns it first. One word apart.
+    at 54k stars. `http library language:python` returns it first, one word apart.
     Topic and keyword searches return near-disjoint sets, so the recipe is a union
-    and this is the thing that runs it -- see scripts/benchmark.py for the numbers.
+    and this is the thing that runs it. See scripts/benchmark.py for the numbers.
     """
     out = {}
     for q in queries:
@@ -421,7 +421,7 @@ def awesome(ecosystem, section, limit=12):
     canonical first, because a person maintains it. Returns (list_slug, candidates).
 
     A curated list is a claim, not evidence: everything it returns still goes through
-    the probe, and lists go stale -- check the pushed date of the list itself.
+    the probe, and lists go stale, so check the pushed date of the list itself.
     """
     words = [w.lower() for w in section.split()]
     for slug in search(f"awesome {ecosystem} --topic awesome-list --sort stars", 3):
