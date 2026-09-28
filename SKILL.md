@@ -137,6 +137,22 @@ compare candidates from the same ecosystem. Across ecosystems use the raw
 Rejections are automatic on `archived`, fork-with-living-parent, missing license,
 or a high or critical unwithdrawn advisory in the current version.
 
+Two options set the need-specific thresholds. Put them before the repos or `--search`.
+
+```bash
+python3 scripts/probe.py --license MIT,Apache-2.0,BSD-3-Clause --search "http client language:go"
+python3 scripts/probe.py --stale-days 365 owner/repo
+```
+
+- `--license` takes the SPDX ids the need allows. Any other license is a rejection
+  that names the license. Without it any recognised license passes. When the person
+  says "for a commercial product" or "no copyleft", pass the set.
+- `--stale-days` sets the staleness threshold (default 550, about 18 months). Fast
+  ecosystems (JavaScript front end) want less. Finished libraries (a C parser) want more.
+- A license GitHub cannot classify (`NOASSERTION`) is a concern, not a pass. Read it.
+- A repo the probe cannot handle comes back as `state: error` with the reason, and
+  the other rows still arrive.
+
 ### 4. Read the top 3
 
 For every survivor, read the README, the entry point and the public API shape,

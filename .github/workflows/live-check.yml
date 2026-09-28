@@ -1,7 +1,7 @@
 name: live-check
 
 # The selftest is offline and cannot see API drift. This runs the real pipeline
-# against the real endpoints: monthly, and on every push to main.
+# against the real endpoints: monthly, on every push to main, and on pull requests.
 # A failure means one of two things, both worth ten minutes:
 #   - an upstream API changed shape (deps.dev is a v3alpha endpoint)
 #   - a fixture repo changed state (khatru unarchived, the fork deleted)
@@ -11,6 +11,7 @@ on:
     - cron: "17 6 3 * *"
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 jobs:

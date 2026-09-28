@@ -66,6 +66,11 @@ Ask in plain words.
 
 > should I depend on foo/bar, or is there something healthier?
 
+> a permissively licensed Go HTTP router, no copyleft
+
+A license constraint in the ask becomes `--license MIT,Apache-2.0,...` on the probe,
+and anything outside that set is rejected with the license named.
+
 The skill triggers on its own inside any agent session. It does not run on a schedule
 by itself, so pair it with your agent's scheduler if you want periodic scans.
 
@@ -111,4 +116,7 @@ reach for and it has been archived since September 2025.
 - `SKILL.md`, the pipeline instructions the agent follows
 - `scripts/probe.py`, takes a repo list in and returns the disqualify verdict plus
   deps.dev, OSV and provenance data as JSON
+- `scripts/benchmark.py`, measures whether the search recipe finds independently
+  known answers
 - `SPEC.md`, the v1 contract this implements
+- `MAINTENANCE.md`, what can break and how a break is detected

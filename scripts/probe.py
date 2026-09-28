@@ -11,13 +11,18 @@ Auth: `gh` for GitHub. deps.dev and OSV are unauthenticated public HTTP.
     probe.py owner/repo [owner/repo ...]
     probe.py --search "nostr relay" "--topic nostr --topic relay" --limit 10
     probe.py --awesome swift chart
+    probe.py --stale-days 365 --license MIT,Apache-2.0 owner/repo
     probe.py --selftest
+
+Options go before the repos or the search. --stale-days sets the staleness threshold
+for the ecosystem (default 550, about 18 months). --license takes a comma list of
+SPDX ids the need allows, and any other license is a rejection.
 """
 import json, re, shlex, subprocess, sys, urllib.error, urllib.parse, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-STALE_DAYS = 550  # ~18mo. ponytail: fixed threshold, make it a flag if anyone argues about it.
-UA = {"User-Agent": "repo-scout/0.1 (+https://github.com/)"}
+STALE_DAYS = 550  # ~18mo. SPEC says the threshold is per ecosystem, so --stale-days overrides it.
+UA = {"User-Agent": "reponnaissance/0.1 (+https://github.com/adamcopeland-code/reponnaissance)"}
 
 # Manifest file -> (deps.dev system, OSV ecosystem, name extractor)
 MANIFESTS = {
@@ -279,32 +284,33 @@ def _severity(v):
     return s if s in ("critical", "high", "moderate", "medium", "low") else "unknown"
 
 
-def _cvss_band(sev):
-    m = re.search(r"/?(\d+\.\d+)$", str(sev.get("score", "")))
-    if not m:
-        return None
-    s = float(m.group(1))
-    return "critical" if s >= 9 else "high" if s >= 7 else "medium" if s >= 4 else "low"
-
-
-def _db_severity(v):
-    gh_sev = ((v.get("database_specific") or {}).get("severity") or "").lower()
-    return gh_sev or None
 
 
 # --- verdict (pure, self-tested) --------------------------------------------
 
-def verdict(ev):
-    """Cheap disqualify pass. Returns (state, reasons). Pure function of gathered evidence."""
+def verdict(ev, stale_days=STALE_DAYS, allowed_licenses=None):
+    """Cheap disqualify pass. Returns (state, reasons). Pure function of gathered evidence.
+
+    allowed_licenses is the set of SPDX ids the stated need permits, or None for any.
+    SPEC.md rejects a license that is "absent or incompatible with the stated need",
+    and without this only the first half was enforced.
+    """
     reject, concern = [], []
     m = ev.get("meta") or {}
+    lic = m.get("license")
 
     if m.get("archived"):
         reject.append("archived, so no patches will ship")
     if m.get("fork") and m.get("parent"):
         reject.append(f"fork of {m['parent']}, evaluate the parent instead")
-    if not m.get("license"):
+    if not lic:
         reject.append("no license, not safe to depend on")
+    elif lic == "NOASSERTION":
+        # GitHub found a license file it could not classify. That is not "no
+        # license" and it is not "MIT" either, so a person has to read it.
+        concern.append("license file present but not recognised, read it before depending")
+    elif allowed_licenses and lic not in allowed_licenses:
+        reject.append(f"license {lic} is not in the allowed set ({', '.join(sorted(allowed_licenses))})")
 
     advs = ev.get("advisories") or []
     bad = [a["id"] for a in advs if a.get("severity") in ("critical", "high")]
@@ -319,7 +325,7 @@ def verdict(ev):
         concern.append(f"{rest} lower-severity advisor{'y' if rest == 1 else 'ies'}")
 
     d = m.get("stale_days")
-    if d is not None and d > STALE_DAYS and not m.get("archived"):
+    if d is not None and d > stale_days and not m.get("archived"):
         concern.append(f"no push in {d} days")
     if (ev.get("version") or {}).get("deprecated"):
         concern.append("package marked deprecated upstream")
@@ -351,8 +357,19 @@ def security_state(ev):
 
 # --- per-repo orchestration -------------------------------------------------
 
-def probe(slug):
+def probe(slug, stale_days=STALE_DAYS, allowed_licenses=None):
+    """One repo in, one evidence dict out. Never raises, so one bad repo cannot
+    take the JSON for the other eleven down with it."""
+    try:
+        return _probe(slug, stale_days, allowed_licenses)
+    except Exception as e:  # noqa: BLE001, the output is the error report
+        return {"repo": slug, "state": "error", "reasons": [f"probe failed: {type(e).__name__}: {e}"]}
+
+
+def _probe(slug, stale_days, allowed_licenses):
     owner, _, repo = slug.partition("/")
+    if not owner or not repo:
+        return {"repo": slug, "state": "error", "reasons": ["not an owner/repo slug"]}
     ev = {"repo": slug}
 
     r = gh(f"/repos/{owner}/{repo}")
@@ -420,7 +437,7 @@ def probe(slug):
             f"stars percentile {ps:.1f} vs dependents percentile {pd:.1f}, "
             + ("more starred than used" if ps < pd else "more used than starred"))
 
-    ev["state"], ev["reasons"] = verdict(ev)
+    ev["state"], ev["reasons"] = verdict(ev, stale_days, allowed_licenses)
     ev["security"] = security_state(ev)
     return ev
 
@@ -613,11 +630,51 @@ def selftest():
     # Nothing published, or nothing anyone depends on, stays unresolved.
     assert _pick_package([{"registry": {"name": "pypi.org"}, "name": "x", "dependent_repos_count": 0}], "x") is None
 
+    # The stale threshold is per ecosystem, so it must follow the flag.
+    assert verdict(stale, stale_days=1000)[0] == "ok"
+    assert verdict({"meta": {"license": "MIT", "stale_days": 400}, "advisories": []},
+                   stale_days=365)[0] == "concerns"
+
+    # License compatible with the need: outside the allowed set is a rejection.
+    gpl = {"meta": {"license": "GPL-3.0", "stale_days": 1}, "advisories": []}
+    assert verdict(gpl)[0] == "ok"
+    st, why = verdict(gpl, allowed_licenses={"MIT", "Apache-2.0"})
+    assert st == "reject" and "GPL-3.0" in why[0], (st, why)
+    assert verdict(ok, allowed_licenses={"MIT"})[0] == "ok"
+    # An unclassified license file is not "no license" and not a pass either.
+    st, why = verdict({"meta": {"license": "NOASSERTION", "stale_days": 1}, "advisories": []})
+    assert st == "concerns" and "not recognised" in why[0], (st, why)
+
+    # A malformed slug is an error row, not a traceback that loses every other row.
+    assert probe("no-slash")["state"] == "error"
+
+    # Option parsing: flags come off the front, the rest is left alone.
+    o, rest = _options(["--stale-days", "30", "--license", "MIT, Apache-2.0", "a/b"])
+    assert o == {"stale_days": 30, "allowed_licenses": {"MIT", "Apache-2.0"}} and rest == ["a/b"], (o, rest)
+    assert _options(["a/b"]) == ({"stale_days": STALE_DAYS, "allowed_licenses": None}, ["a/b"])
+
     print("selftest ok")
 
 
+def _options(args):
+    """Strip the leading --stale-days / --license options. Returns (opts, rest)."""
+    opts = {"stale_days": STALE_DAYS, "allowed_licenses": None}
+    while args and args[0] in ("--stale-days", "--license"):
+        if len(args) < 2:
+            sys.exit(f"{args[0]} needs a value")
+        flag, val, args = args[0], args[1], args[2:]
+        if flag == "--stale-days":
+            try:
+                opts["stale_days"] = int(val)
+            except ValueError:
+                sys.exit(f"--stale-days takes a number of days, not {val!r}")
+        else:
+            opts["allowed_licenses"] = {x.strip() for x in val.split(",") if x.strip()}
+    return opts, args
+
+
 def main():
-    args = sys.argv[1:]
+    opts, args = _options(sys.argv[1:])
     if not args or args[0] in ("-h", "--help"):
         sys.exit(__doc__)
     if args[0] == "--selftest":
@@ -633,13 +690,15 @@ def main():
         limit, rest = 10, args[1:]
         if "--limit" in rest:
             i = rest.index("--limit")
+            if i + 1 >= len(rest) or not rest[i + 1].isdigit():
+                sys.exit("--limit needs a number")
             limit = int(rest[i + 1])
             rest = rest[:i] + rest[i + 2:]
         slugs = search_all(rest, limit)
     else:
         slugs = args
     with ThreadPoolExecutor(max_workers=6) as ex:
-        results = list(ex.map(probe, slugs))
+        results = list(ex.map(lambda s: probe(s, **opts), slugs))
     json.dump(results, sys.stdout, indent=2)
     print()
 
