@@ -5,6 +5,8 @@ name: live-check
 # A failure means one of two things, both worth ten minutes:
 #   - an upstream API changed shape (deps.dev is a v3alpha endpoint)
 #   - a fixture repo changed state (khatru unarchived, the fork deleted)
+# A manual run (workflow_dispatch) also runs field-test: the README's nostr set
+# and scripts/benchmark.py.
 
 on:
   schedule:
@@ -39,3 +41,58 @@ jobs:
           assert f["state"] == "reject" and any("fork" in x for x in f["reasons"]), f
           print("live acceptance ok")
           EOF
+      - name: live option checks
+        run: |
+          python3 - <<'EOF'
+          import json, subprocess, sys
+          def probe(*args):
+              run = subprocess.run([sys.executable, "scripts/probe.py", *args],
+                                   capture_output=True, text=True, check=True)
+              return {r["repo"]: r for r in json.loads(run.stdout)}
+
+          # ossf/scorecard is Apache-2.0. Outside the allowed set it is rejected by name.
+          s = probe("--license", "MIT", "ossf/scorecard")["ossf/scorecard"]
+          assert s["state"] == "reject" and any("Apache-2.0" in x for x in s["reasons"]), s
+          s = probe("--license", "MIT,Apache-2.0", "ossf/scorecard")["ossf/scorecard"]
+          assert not any("license" in x for x in s["reasons"]), s
+
+          # The threshold follows the flag. A zero-day threshold flags any repo not pushed today.
+          s = probe("--stale-days", "0", "ossf/scorecard")["ossf/scorecard"]
+          if s["meta"]["stale_days"] > 0:
+              assert any("no push" in x for x in s["reasons"]), s
+          s = probe("--stale-days", "100000", "ossf/scorecard")["ossf/scorecard"]
+          assert not any("no push" in x for x in s["reasons"]), s
+
+          # A bad row is an error row, and the good row still arrives.
+          out = probe("not-a-slug", "fiatjaf/khatru")
+          assert out["not-a-slug"]["state"] == "error", out["not-a-slug"]
+          assert out["fiatjaf/khatru"]["state"] == "reject", out["fiatjaf/khatru"]
+          print("live option checks ok")
+          EOF
+
+  # The broader run. Manual only, because the benchmark spends 18 of GitHub's 30
+  # search requests a minute and reads a dozen repos through four APIs.
+  field-test:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: README run, nostr relays
+        run: |
+          python3 - <<'EOF'
+          import json, subprocess, sys
+          repos = ["fiatjaf/khatru", "fiatjaf/nostr-relay-registry", "mattn/nostr-relay",
+                   "Yonle/bostr", "hoytech/strfry", "cameri/nostream", "mikedilger/chorus",
+                   "permissionlesstech/georelays"]
+          run = subprocess.run([sys.executable, "scripts/probe.py", *repos],
+                               capture_output=True, text=True, check=True)
+          for r in json.loads(run.stdout):
+              print(f"{r['repo']:32} {r['state']:9} {r.get('security', '-'):16} "
+                    f"{'; '.join(r['reasons'][:2])}")
+          EOF
+      - name: benchmark
+        run: python3 scripts/benchmark.py
