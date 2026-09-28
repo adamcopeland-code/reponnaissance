@@ -86,10 +86,11 @@ jobs:
           assert e.get("scorecard_date"), ("deps.dev project has no Scorecard", e)
           assert e["advisories"] is not None, ("OSV did not answer", e)
           assert (e.get("adoption") or {}).get("dependent_repos"), ("ecosyste.ms gave no adoption", e)
-          assert e["security"] != "not assessed", e
+          assert "deprecated" in (e.get("version") or {}), ("deps.dev version endpoint gave nothing", e)
           sys.path.insert(0, "scripts")
           import probe
-          advs = probe.advisories("npm", "event-stream", "3.3.6") or []
+          advs = probe.advisories("npm", "event-stream", "3.3.6")
+          assert advs is not None, "OSV did not answer for event-stream"
           hit = [a for a in advs if a["id"] == "GHSA-mh6f-8j2x-4483"]
           assert hit and hit[0]["severity"] == "critical", ("OSV lost a known critical", advs)
           print("upstream APIs ok:", e["package"], e["security"])

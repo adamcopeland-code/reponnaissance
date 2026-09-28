@@ -278,7 +278,9 @@ def _merge_advisories(vulns):
     for v in vulns:
         if v.get("withdrawn"):
             continue
-        ids = {v["id"]} | set(v.get("aliases") or [])
+        # OSV's schema says aliases are strings. A null in the list must not turn
+        # a known critical into an error row, so anything else is skipped.
+        ids = {v["id"]} | {a for a in (v.get("aliases") or []) if isinstance(a, str)}
         rec = {"id": v["id"], "summary": (v.get("summary") or "")[:120],
                "severity": _severity(v)}
         # A record can bridge two groups (a GO entry aliasing two CVEs). Fold every
@@ -296,10 +298,15 @@ def _merge_advisories(vulns):
 
 def _best(ids, recs):
     """One entry for an alias group: the best-rated record, cited by a GHSA id."""
-    best = max(recs, key=lambda r: (SEVERITY_RANK[r["severity"]], r["id"].startswith("GHSA-"), r["id"]))
-    ghsa = sorted(i for i in ids if i.startswith("GHSA-"))
-    cite = best["id"] if best["id"].startswith("GHSA-") else (ghsa[0] if ghsa else best["id"])
-    summary = best["summary"] or next((r["summary"] for r in recs if r["summary"]), "")
+    rank = lambda r: (SEVERITY_RANK[r["severity"]], r["id"].startswith("GHSA-"), r["id"])
+    ordered = sorted(recs, key=rank, reverse=True)
+    best = ordered[0]
+    # Cite the best-rated GHSA record. A group OSV returned only as a GO or PYSEC
+    # record cites the GHSA it aliases, because that is the id SPEC.md asks for.
+    ghsa_recs = [r["id"] for r in ordered if r["id"].startswith("GHSA-")]
+    ghsa_alias = sorted(i for i in ids if i.startswith("GHSA-"))
+    cite = (ghsa_recs or ghsa_alias or [best["id"]])[0]
+    summary = next((r["summary"] for r in ordered if r["summary"]), "")
     return {"id": cite, "summary": summary, "severity": best["severity"]}
 
 
@@ -731,6 +738,19 @@ def selftest():
     # Two unrelated bugs stay two, in arrival order.
     assert [x["id"] for x in _merge_advisories([a, b])] == ["GHSA-a", "GHSA-b"]
 
+    # A null alias is skipped, not a crash that hides a critical behind an error row.
+    assert _merge_advisories([{"id": "GHSA-n", "aliases": [None, "CVE-1"],
+                               "database_specific": {"severity": "CRITICAL"}}])[0]["severity"] == "critical"
+    # A GO-only group cites the GHSA it aliases, and the best-rated GHSA wins a tie on
+    # having a record: GHSA-bbbb MODERATE is cited over GHSA-aaaa LOW.
+    assert _merge_advisories([go])[0]["id"] == "GHSA-h395-qcrw-5vmq"
+    ga = {"id": "GHSA-aaaa", "aliases": ["CVE-9"], "database_specific": {"severity": "LOW"}}
+    gb = {"id": "GHSA-bbbb", "aliases": ["CVE-9"], "database_specific": {"severity": "MODERATE"}}
+    gx = {"id": "PYSEC-x", "aliases": ["CVE-9"], "database_specific": {"severity": "HIGH"}}
+    for order in itertools.permutations([ga, gb, gx]):
+        m = _merge_advisories(list(order))
+        assert [(x["id"], x["severity"]) for x in m] == [("GHSA-bbbb", "high")], (order, m)
+
     # Misplaced options are caught, including the --flag=value form.
     assert _misplaced(["a/b", "--license", "MIT"]) == ["--license"]
     assert _misplaced(["a/b", "--stale-days=30"]) == ["--stale-days=30"]
@@ -746,6 +766,32 @@ def selftest():
     assert _options(["a/b"]) == ({"stale_days": STALE_DAYS, "allowed_licenses": None}, ["a/b"])
     assert _options(["--license=MIT", "--stale-days=9", "a/b"]) == (
         {"stale_days": 9, "allowed_licenses": {"MIT"}}, ["a/b"])
+
+    # The command line refuses every way an option could be dropped. These exit
+    # before any gh call, so they stay offline.
+    def cli(*a):
+        p = subprocess.run([sys.executable, __file__, *a], capture_output=True, text=True)
+        return p.returncode, p.stdout + p.stderr
+    for argv, needle in [
+        (["--license", "MIT", "--license", "GPL-3.0", "a/b"], "given twice"),
+        (["--stale-days", "1", "--stale-days", "2", "a/b"], "given twice."),
+        (["--license", "--stale-days", "5", "a/b"], "needs a value"),
+        (["--license=--stale-days", "a/b"], "needs a value"),
+        (["--license", ",", "a/b"], "at least one SPDX id"),
+        (["--stale-days", "-1", "a/b"], "cannot be negative"),
+        (["a/b", "--license", "MIT"], "options go before"),
+        (["--search", "q", "--limit", "3", "--limit", "4"], "--limit given twice"),
+        (["--search", "q", "--limit"], "--limit needs a number"),
+        (["--search", "q", "--limit", "0"], "at least 1"),
+        (["--search", " "], "usage: probe.py --search"),
+        (["--search", "q", "--awesome", "swift", "chart"], "come first"),
+        (["-x", "a/b"], "not a repo slug"),
+    ]:
+        rc, out = cli(*argv)
+        assert rc == 1 and needle in out, (argv, rc, out)
+    assert "comma list" not in cli("--stale-days", "1", "--stale-days", "2", "a/b")[1]
+    rc, out = cli("--help")
+    assert rc == 0 and "Reponnaissance evidence layer" in out, (rc, out)
 
     print("selftest ok")
 
@@ -764,12 +810,15 @@ def _options(args):
     while args and args[0].split("=", 1)[0] in OPTIONS:
         if "=" in args[0]:
             (flag, val), args = args[0].split("=", 1), args[1:]
-        elif len(args) < 2 or args[1].startswith("--"):
+        elif len(args) < 2:
             sys.exit(f"{args[0]} needs a value")
         else:
             flag, val, args = args[0], args[1], args[2:]
+        if val.startswith("--"):
+            sys.exit(f"{flag} needs a value, not the option {val}")
         if flag in seen:
-            sys.exit(f"{flag} given twice. Give it once, with a comma list for --license.")
+            sys.exit(f"{flag} given twice. Give it once"
+                     + (", with a comma list." if flag == "--license" else "."))
         seen.add(flag)
         if flag == "--stale-days":
             try:
@@ -823,6 +872,8 @@ def main():
         return 0
     if args[0] == "--selftest":
         return selftest()
+    if any(a in ("--search", "--awesome") for a in args[1:]):
+        sys.exit("--search and --awesome come first, after any --license or --stale-days")
     late = _misplaced(args)
     if late:
         sys.exit(f"options go before the repos, --search or --awesome: {' '.join(late)}")
@@ -834,8 +885,6 @@ def main():
         queries = [q for q in queries if q.strip()]
         if not queries:
             sys.exit('usage: probe.py --search "query" ["query" ...] [--limit N]')
-    elif "--search" in args or "--awesome" in args:
-        sys.exit("--search and --awesome come first, after any --license or --stale-days")
     else:
         bad = [a for a in args if a.startswith("-")]
         if bad:

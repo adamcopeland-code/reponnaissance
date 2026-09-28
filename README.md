@@ -102,7 +102,8 @@ Three things changed since that run. A license file GitHub cannot classify now
 reads as a concern, so `chorus` comes back `concerns`, license not recognised. The
 reasons now cite a lower-severity advisory by id, as the summary above does. And
 an unresolved package no longer claims to be unpublished, because deps.dev not
-answering looks the same, so `nostream` reads "no published version resolved".
+answering looks the same, so `nostream` now says no published version resolved on
+npm, either unpublished or deps.dev did not answer.
 
 The verdict was strfry, pushed three days earlier and the most actively maintained
 of the survivors. Its `not assessed` means the repo publishes no package, so OSV has
