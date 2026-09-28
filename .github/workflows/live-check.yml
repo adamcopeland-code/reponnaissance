@@ -71,18 +71,27 @@ jobs:
           EOF
       - name: upstream APIs answer
         # Every check above reads GitHub fields only, so they stay green while
-        # deps.dev, OSV or ecosyste.ms are down or have changed shape. express
-        # publishes to npm and is widely used, so each source must answer for it.
+        # deps.dev, OSV or ecosyste.ms are down or have dropped the fields the probe
+        # reads. express publishes to npm, is widely used and has a Scorecard, so
+        # each source must answer for it. OSV answers {} for clean and for a renamed
+        # field alike, so it also has to find a known critical in a pinned version.
         run: |
           python3 - <<'EOF'
           import json, subprocess, sys
           run = subprocess.run([sys.executable, "scripts/probe.py", "expressjs/express"],
                                capture_output=True, text=True, check=True)
           e = json.loads(run.stdout)[0]
+          assert e["state"] != "error", ("probe error, gh or GitHub failed", e)
           assert (e.get("package") or {}).get("version"), ("deps.dev resolved no version", e)
+          assert e.get("scorecard_date"), ("deps.dev project has no Scorecard", e)
           assert e["advisories"] is not None, ("OSV did not answer", e)
           assert (e.get("adoption") or {}).get("dependent_repos"), ("ecosyste.ms gave no adoption", e)
           assert e["security"] != "not assessed", e
+          sys.path.insert(0, "scripts")
+          import probe
+          advs = probe.advisories("npm", "event-stream", "3.3.6") or []
+          hit = [a for a in advs if a["id"] == "GHSA-mh6f-8j2x-4483"]
+          assert hit and hit[0]["severity"] == "critical", ("OSV lost a known critical", advs)
           print("upstream APIs ok:", e["package"], e["security"])
           EOF
 

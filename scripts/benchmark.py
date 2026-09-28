@@ -17,7 +17,7 @@ repo is in the candidate set at all, against answers known before the search ran
 Search costs 31 requests against GitHub's 30 a minute, so one run already leans on
 probe.search()'s rate-limit retry. Do not loop this.
 """
-import json, subprocess, sys, time
+import json, shutil, subprocess, sys, time
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, __file__.rsplit("/", 1)[0])
@@ -252,11 +252,11 @@ def check(row):
     # probe() turns any exception into an error row. For the cases that only say
     # "must not be rejected", an error row would otherwise pass without a probe.
     if r["state"] == "error":
-        fails.append(f"probe error: {'; '.join(r['reasons'])}")
+        fails.append(f"probe error: {' | '.join(r['reasons'])}")
     elif want_state and r["state"] != want_state:
         fails.append(f"state {r['state']!r}, wanted {want_state!r}")
     if want_state is None and r["state"] == "reject":
-        fails.append(f"rejected a healthy repo: {'; '.join(r['reasons'])}")
+        fails.append(f"rejected a healthy repo: {' | '.join(r['reasons'])}")
     if want_sec and r.get("security") != want_sec:
         fails.append(f"security {r.get('security')!r}, wanted {want_sec!r}")
     return slug, fails, r
@@ -275,6 +275,8 @@ def core_remaining():
 
 
 def main():
+    if shutil.which("gh") is None:
+        sys.exit("the gh CLI is not installed. Install it and run `gh auth login`.")
     print("Reponnaissance benchmark\n")
     before = core_remaining()
     t0 = time.time()
@@ -316,12 +318,16 @@ def main():
     # The Actions token reports a remaining count that does not move during a run,
     # which printed "0 core calls" and then a throughput divided by one. A count
     # that did not go down is not a measurement, so say so instead.
-    if before and after and before[0] > after[0] and before[1] == after[1]:
+    if not before or not after:
+        print("GitHub core calls not measured: gh could not read the rate limit.")
+    elif before[1] != after[1] or after[0] > before[0]:
+        print("GitHub core calls not measured: the rate-limit window reset during the run.")
+    elif before[0] == after[0]:
+        print("GitHub core calls not measured: the rate-limit counter did not move.")
+    else:
         calls, limit = before[0] - after[0], after[1]
         print(f"{calls} GitHub core calls ({calls/len(REPOS):.1f} per repo). Core budget "
               f"{limit:,}/hr, so about {limit*len(REPOS)//calls:,} repos per hour.")
-    else:
-        print("GitHub core calls not measured: the rate-limit counter did not move.")
     print(f"\n{'ALL PASS' if not failed else str(failed) + ' FAILED'}")
     return 1 if failed else 0
 

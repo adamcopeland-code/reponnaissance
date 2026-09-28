@@ -274,25 +274,33 @@ def _merge_advisories(vulns):
     read as a concern. Merge the alias group, keep the highest severity, and cite
     the GHSA id when the group has one, because that is the id SPEC.md asks for.
     """
-    groups = []  # [ids, entry]
+    groups = []  # [ids, records]
     for v in vulns:
         if v.get("withdrawn"):
             continue
         ids = {v["id"]} | set(v.get("aliases") or [])
-        entry = {"id": v["id"], "summary": (v.get("summary") or "")[:120],
-                 "severity": _severity(v)}
-        hit = next((g for g in groups if g[0] & ids), None)
-        if hit is None:
-            groups.append([ids, entry])
-            continue
-        hit[0] |= ids
-        best = hit[1]
-        if SEVERITY_RANK[entry["severity"]] > SEVERITY_RANK[best["severity"]]:
-            best["severity"] = entry["severity"]
-            best["summary"] = entry["summary"] or best["summary"]
-        if entry["id"].startswith("GHSA-") and not best["id"].startswith("GHSA-"):
-            best["id"] = entry["id"]
-    return [g[1] for g in groups]
+        rec = {"id": v["id"], "summary": (v.get("summary") or "")[:120],
+               "severity": _severity(v)}
+        # A record can bridge two groups (a GO entry aliasing two CVEs). Fold every
+        # group it touches into one, or the count and the cited id depend on order.
+        hits = [g for g in groups if g[0] & ids]
+        at = groups.index(hits[0]) if hits else len(groups)
+        merged = [ids, [rec]]
+        for g in hits:
+            merged[0] |= g[0]
+            merged[1] += g[1]
+            groups.remove(g)
+        groups.insert(at, merged)
+    return [_best(ids, recs) for ids, recs in groups]
+
+
+def _best(ids, recs):
+    """One entry for an alias group: the best-rated record, cited by a GHSA id."""
+    best = max(recs, key=lambda r: (SEVERITY_RANK[r["severity"]], r["id"].startswith("GHSA-"), r["id"]))
+    ghsa = sorted(i for i in ids if i.startswith("GHSA-"))
+    cite = best["id"] if best["id"].startswith("GHSA-") else (ghsa[0] if ghsa else best["id"])
+    summary = best["summary"] or next((r["summary"] for r in recs if r["summary"]), "")
+    return {"id": cite, "summary": summary, "severity": best["severity"]}
 
 
 def _severity(v):
@@ -504,7 +512,10 @@ def search(query, limit, _retry=True):
             time.sleep(30)  # the search window is per minute, so one pause clears it
             return search(query, limit, _retry=False)
         sys.exit(f"gh search failed: {p.stderr.strip()}")
-    return [r["fullName"] for r in json.loads(p.stdout)]
+    try:
+        return [r["fullName"] for r in json.loads(p.stdout)]
+    except (json.JSONDecodeError, TypeError, KeyError):
+        sys.exit(f"gh search returned something that is not a result list, for {query!r}")
 
 
 def search_all(queries, limit):
@@ -704,16 +715,37 @@ def selftest():
         assert m == [{"id": "GHSA-h395-qcrw-5vmq", "summary": "", "severity": "high"}], m
     assert _merge_advisories([{"id": "GHSA-w", "withdrawn": "2024-01-01T00:00:00Z"}]) == []
 
+    # A record that bridges two groups folds them into one, whatever the order, and
+    # the cited id is the best-rated GHSA. Six orders, one answer.
+    import itertools
+    a = {"id": "GHSA-a", "aliases": ["CVE-A"], "database_specific": {"severity": "LOW"}}
+    b = {"id": "GHSA-b", "aliases": ["CVE-B"], "database_specific": {"severity": "CRITICAL"}}
+    c = {"id": "GO-c", "aliases": ["CVE-A", "CVE-B"]}
+    for order in itertools.permutations([a, b, c]):
+        m = _merge_advisories(list(order))
+        assert [(x["id"], x["severity"]) for x in m] == [("GHSA-b", "critical")], (order, m)
+    # Two aliased GHSAs: cite the higher-rated one, not whichever came first.
+    lo = {"id": "GHSA-lo", "aliases": ["GHSA-hi"], "database_specific": {"severity": "LOW"}}
+    hi = {"id": "GHSA-hi", "aliases": ["GHSA-lo"], "database_specific": {"severity": "HIGH"}}
+    assert [x["id"] for x in _merge_advisories([lo, hi])] == ["GHSA-hi"]
+    # Two unrelated bugs stay two, in arrival order.
+    assert [x["id"] for x in _merge_advisories([a, b])] == ["GHSA-a", "GHSA-b"]
+
     # Misplaced options are caught, including the --flag=value form.
     assert _misplaced(["a/b", "--license", "MIT"]) == ["--license"]
     assert _misplaced(["a/b", "--stale-days=30"]) == ["--stale-days=30"]
     assert _misplaced(["nostr relay", "--topic nostr --topic relay"]) == []
+    # gh's own --license qualifier inside a search variant is not ours.
+    assert _misplaced(["nostr --license mit", "--license=mit nostr"]) == []
     assert _limit(["q", "--limit", "5"]) == (5, ["q"]) and _limit(["q"]) == (10, ["q"])
+    assert _limit(["q", "--limit=7"]) == (7, ["q"])
 
     # Option parsing: flags come off the front, the rest is left alone.
     o, rest = _options(["--stale-days", "30", "--license", "MIT, Apache-2.0", "a/b"])
     assert o == {"stale_days": 30, "allowed_licenses": {"MIT", "Apache-2.0"}} and rest == ["a/b"], (o, rest)
     assert _options(["a/b"]) == ({"stale_days": STALE_DAYS, "allowed_licenses": None}, ["a/b"])
+    assert _options(["--license=MIT", "--stale-days=9", "a/b"]) == (
+        {"stale_days": 9, "allowed_licenses": {"MIT"}}, ["a/b"])
 
     print("selftest ok")
 
@@ -722,12 +754,23 @@ OPTIONS = ("--stale-days", "--license")
 
 
 def _options(args):
-    """Strip the leading --stale-days / --license options. Returns (opts, rest)."""
-    opts = {"stale_days": STALE_DAYS, "allowed_licenses": None}
-    while args and args[0] in OPTIONS:
-        if len(args) < 2:
+    """Strip the leading --stale-days / --license options. Returns (opts, rest).
+
+    Both `--license MIT` and `--license=MIT` work. A value that is itself an option
+    is refused, because `--license --stale-days 5` would otherwise allow only the
+    license "--stale-days" and probe "5" as a repo.
+    """
+    opts, seen = {"stale_days": STALE_DAYS, "allowed_licenses": None}, set()
+    while args and args[0].split("=", 1)[0] in OPTIONS:
+        if "=" in args[0]:
+            (flag, val), args = args[0].split("=", 1), args[1:]
+        elif len(args) < 2 or args[1].startswith("--"):
             sys.exit(f"{args[0]} needs a value")
-        flag, val, args = args[0], args[1], args[2:]
+        else:
+            flag, val, args = args[0], args[1], args[2:]
+        if flag in seen:
+            sys.exit(f"{flag} given twice. Give it once, with a comma list for --license.")
+        seen.add(flag)
         if flag == "--stale-days":
             try:
                 opts["stale_days"] = int(val)
@@ -747,27 +790,37 @@ def _options(args):
 def _misplaced(args):
     """Options that arrived after the repos or queries. They would otherwise be probed
     as slugs or searched as words, and the constraint would vanish with exit 0."""
-    return [a for a in args if a.split("=", 1)[0] in OPTIONS]
+    return [a for a in args if not any(c.isspace() for c in a) and a.split("=", 1)[0] in OPTIONS]
 
 
 def _limit(rest):
-    """Pull --limit N out of the search arguments. Returns (limit, rest)."""
-    if "--limit" not in rest:
+    """Pull --limit N (or --limit=N) out of the search arguments. Returns (limit, rest)."""
+    at = [i for i, a in enumerate(rest) if a == "--limit" or a.startswith("--limit=")]
+    if not at:
         return 10, rest
-    i = rest.index("--limit")
+    if len(at) > 1:
+        sys.exit("--limit given twice")
+    i = at[0]
+    if "=" in rest[i]:
+        raw, rest = rest[i].split("=", 1)[1], rest[:i] + rest[i + 1:]
+    else:
+        raw, rest = (rest[i + 1] if i + 1 < len(rest) else ""), rest[:i] + rest[i + 2:]
     try:
-        limit = int(rest[i + 1])
-    except (IndexError, ValueError):
+        limit = int(raw)
+    except ValueError:
         sys.exit("--limit needs a number")
     if limit < 1:
         sys.exit("--limit must be at least 1")
-    return limit, rest[:i] + rest[i + 2:]
+    return limit, rest
 
 
 def main():
     opts, args = _options(sys.argv[1:])
-    if not args or args[0] in ("-h", "--help"):
+    if not args:
         sys.exit(__doc__)
+    if args[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
     if args[0] == "--selftest":
         return selftest()
     late = _misplaced(args)
@@ -778,8 +831,11 @@ def main():
             sys.exit("usage: probe.py --awesome <ecosystem> <section words>")
     elif args[0] == "--search":
         limit, queries = _limit(args[1:])
+        queries = [q for q in queries if q.strip()]
         if not queries:
             sys.exit('usage: probe.py --search "query" ["query" ...] [--limit N]')
+    elif "--search" in args or "--awesome" in args:
+        sys.exit("--search and --awesome come first, after any --license or --stale-days")
     else:
         bad = [a for a in args if a.startswith("-")]
         if bad:

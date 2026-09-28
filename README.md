@@ -98,9 +98,11 @@ day, and its security line read `not assessed` because it publishes no manifest 
 check. No filter missed it. Every mechanical signal was either clean or absent. It is
 not a relay. It is an HTML page listing other people's relays and where they are.
 
-Two things changed since that run. A license file GitHub cannot classify now reads
-as a concern, so `chorus` comes back `concerns`, license not recognised. And the
-reasons now cite a lower-severity advisory by id, as the summary above does.
+Three things changed since that run. A license file GitHub cannot classify now
+reads as a concern, so `chorus` comes back `concerns`, license not recognised. The
+reasons now cite a lower-severity advisory by id, as the summary above does. And
+an unresolved package no longer claims to be unpublished, because deps.dev not
+answering looks the same, so `nostream` reads "no published version resolved".
 
 The verdict was strfry, pushed three days earlier and the most actively maintained
 of the survivors. Its `not assessed` means the repo publishes no package, so OSV has

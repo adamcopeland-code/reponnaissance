@@ -153,6 +153,7 @@ python3 scripts/probe.py --stale-days 365 owner/repo
 - A license GitHub cannot classify (`NOASSERTION`) is a concern, not a pass, and
   `--license` cannot check it. Read the license file.
 - An option placed after the repos is refused with a message, never dropped.
+  `--license=MIT` and `--license MIT` both work. Give each option once.
 - A repo the probe cannot handle comes back as `state: error` with the reason, and
   the other rows still arrive. An error row is not evidence. Say it was not checked.
 - A fork of an archived parent is a concern, not a rejection. It may be the line
