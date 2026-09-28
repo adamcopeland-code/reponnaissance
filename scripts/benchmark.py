@@ -14,7 +14,8 @@ check that the probe refuses to call something safe when it never looked. The
 search cases below measure the half that was never measured: whether the right
 repo is in the candidate set at all, against answers known before the search ran.
 
-Search costs 18 of GitHub's 30 requests per minute, so do not loop this.
+Search costs 31 requests against GitHub's 30 a minute, so one run already leans on
+probe.search()'s rate-limit retry. Do not loop this.
 """
 import json, subprocess, sys, time
 from concurrent.futures import ThreadPoolExecutor
@@ -248,7 +249,11 @@ def check(row):
     slug, want_state, want_sec, _ = row
     r = probe.probe(slug)
     fails = []
-    if want_state and r["state"] != want_state:
+    # probe() turns any exception into an error row. For the cases that only say
+    # "must not be rejected", an error row would otherwise pass without a probe.
+    if r["state"] == "error":
+        fails.append(f"probe error: {'; '.join(r['reasons'])}")
+    elif want_state and r["state"] != want_state:
         fails.append(f"state {r['state']!r}, wanted {want_state!r}")
     if want_state is None and r["state"] == "reject":
         fails.append(f"rejected a healthy repo: {'; '.join(r['reasons'])}")
@@ -257,16 +262,26 @@ def check(row):
     return slug, fails, r
 
 
+def core_remaining():
+    """(remaining, limit) for the core pool, or None when gh cannot say."""
+    p = subprocess.run(["gh", "api", "/rate_limit", "--jq",
+                        ".resources.core | [.remaining, .limit] | @tsv"],
+                       capture_output=True, text=True)
+    try:
+        remaining, limit = p.stdout.split()
+        return int(remaining), int(limit)
+    except ValueError:
+        return None
+
+
 def main():
     print("Reponnaissance benchmark\n")
-    before = subprocess.run(["gh", "api", "/rate_limit", "--jq", ".resources.core.remaining"],
-                            capture_output=True, text=True).stdout.strip()
+    before = core_remaining()
     t0 = time.time()
     with ThreadPoolExecutor(max_workers=6) as ex:
         results = list(ex.map(check, REPOS))
     elapsed = time.time() - t0
-    after = subprocess.run(["gh", "api", "/rate_limit", "--jq", ".resources.core.remaining"],
-                           capture_output=True, text=True).stdout.strip()
+    after = core_remaining()
 
     failed = 0
     for (slug, fails, r), row in zip(results, REPOS):
@@ -297,10 +312,16 @@ def main():
     failed += adoption_bench()
     failed += search_bench()
 
-    calls = int(before) - int(after) if before and after else 0
-    print(f"\n{len(REPOS)} repos in {elapsed:.1f}s ({elapsed/len(REPOS):.2f}s each), "
-          f"{calls} GitHub core calls ({calls/len(REPOS):.1f} per repo)")
-    print(f"Core budget 5,000/hr, so about {5000*len(REPOS)//max(calls,1):,} repos per hour.")
+    print(f"\n{len(REPOS)} repos in {elapsed:.1f}s ({elapsed/len(REPOS):.2f}s each)")
+    # The Actions token reports a remaining count that does not move during a run,
+    # which printed "0 core calls" and then a throughput divided by one. A count
+    # that did not go down is not a measurement, so say so instead.
+    if before and after and before[0] > after[0] and before[1] == after[1]:
+        calls, limit = before[0] - after[0], after[1]
+        print(f"{calls} GitHub core calls ({calls/len(REPOS):.1f} per repo). Core budget "
+              f"{limit:,}/hr, so about {limit*len(REPOS)//calls:,} repos per hour.")
+    else:
+        print("GitHub core calls not measured: the rate-limit counter did not move.")
     print(f"\n{'ALL PASS' if not failed else str(failed) + ' FAILED'}")
     return 1 if failed else 0
 

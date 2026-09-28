@@ -22,8 +22,8 @@ no reason to exist.
 Two to four query variants, never one. `probe.py --search` takes several at once and
 dedupes them, so the expansion is one command. The person gives you intent. Intent is
 not a query, and translating it decides whether everything downstream is reading the
-right eight repos. Measured: one naive query finds the known answer for 3 of the 7
-intents in `scripts/benchmark.py`, the expanded recipe finds all 7.
+right eight repos. Measured: one naive query finds the known answer for 2 of the 9
+intents in `scripts/benchmark.py`, the expanded recipe finds all 9.
 
 **Never send the sentence.** Sometimes it returns nothing, which is obvious and
 harmless. The dangerous case is when it returns something. "something to make my
@@ -144,14 +144,19 @@ python3 scripts/probe.py --license MIT,Apache-2.0,BSD-3-Clause --search "http cl
 python3 scripts/probe.py --stale-days 365 owner/repo
 ```
 
-- `--license` takes the SPDX ids the need allows. Any other license is a rejection
-  that names the license. Without it any recognised license passes. When the person
-  says "for a commercial product" or "no copyleft", pass the set.
+- `--license` takes the SPDX ids the need allows, compared without case. Any other
+  license is a rejection that names the license. Without it any recognised license
+  passes. When the person says "for a commercial product" or "no copyleft", pass the
+  set. An empty list is refused rather than read as "anything".
 - `--stale-days` sets the staleness threshold (default 550, about 18 months). Fast
   ecosystems (JavaScript front end) want less. Finished libraries (a C parser) want more.
-- A license GitHub cannot classify (`NOASSERTION`) is a concern, not a pass. Read it.
+- A license GitHub cannot classify (`NOASSERTION`) is a concern, not a pass, and
+  `--license` cannot check it. Read the license file.
+- An option placed after the repos is refused with a message, never dropped.
 - A repo the probe cannot handle comes back as `state: error` with the reason, and
-  the other rows still arrive.
+  the other rows still arrive. An error row is not evidence. Say it was not checked.
+- A fork of an archived parent is a concern, not a rejection. It may be the line
+  that is still maintained, so read it.
 
 ### 4. Read the top 3
 
@@ -190,7 +195,9 @@ Three states. Never two, and never a score.
 
 - `vulnerable` means an OSV advisory affects the current version. Cite the GHSA id.
 - `hygiene concerns` means naming the failing Scorecard checks. Never a bare number.
-- `not assessed` means no Scorecard, or the repo publishes no package, or both.
+- `not assessed` means the vulnerability check did not run. The repo publishes no
+  package a registry resolves, or the lookup failed. A Scorecard alone never clears
+  it, and a repo with no Scorecard but a clean OSV answer reads `no known issues`.
 
 `not assessed` is the most common answer on exactly the small repos this skill
 exists to find. On a five-repo nostr relay set, three had no Scorecard at all,

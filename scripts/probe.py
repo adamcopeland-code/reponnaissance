@@ -18,7 +18,7 @@ Options go before the repos or the search. --stale-days sets the staleness thres
 for the ecosystem (default 550, about 18 months). --license takes a comma list of
 SPDX ids the need allows, and any other license is a rejection.
 """
-import json, re, shlex, subprocess, sys, urllib.error, urllib.parse, urllib.request
+import json, re, shlex, shutil, subprocess, sys, urllib.error, urllib.parse, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 STALE_DAYS = 550  # ~18mo. SPEC says the threshold is per ecosystem, so --stale-days overrides it.
@@ -258,19 +258,41 @@ def advisories(ecosystem, name, version):
     d = http("https://api.osv.dev/v1/query", payload=body)
     if d is None:
         return None  # query failed: unknown, not clean
-    out, seen = [], set()
-    for v in d.get("vulns", []):
+    return _merge_advisories(d.get("vulns", []))
+
+
+SEVERITY_RANK = {"critical": 4, "high": 3, "moderate": 2, "medium": 2, "low": 1, "unknown": 0}
+
+
+def _merge_advisories(vulns):
+    """One entry per bug, rated by the best-rated record. Pure, so both orders are tested.
+
+    The same vulnerability appears once per database. GO-2021-0052 and
+    GHSA-h395-qcrw-5vmq are one bug, and without a merge the count is inflated.
+    Keeping whichever record came first was order dependent: the Go record carries
+    no rating, so a GHSA rated high that arrived second was dropped and a reject
+    read as a concern. Merge the alias group, keep the highest severity, and cite
+    the GHSA id when the group has one, because that is the id SPEC.md asks for.
+    """
+    groups = []  # [ids, entry]
+    for v in vulns:
         if v.get("withdrawn"):
             continue
-        # The same vulnerability appears once per database. GO-2021-0052 and
-        # GHSA-h395-qcrw-5vmq are one bug. Without this the count is inflated.
         ids = {v["id"]} | set(v.get("aliases") or [])
-        if ids & seen:
+        entry = {"id": v["id"], "summary": (v.get("summary") or "")[:120],
+                 "severity": _severity(v)}
+        hit = next((g for g in groups if g[0] & ids), None)
+        if hit is None:
+            groups.append([ids, entry])
             continue
-        seen |= ids
-        out.append({"id": v["id"], "summary": (v.get("summary") or "")[:120],
-                    "severity": _severity(v)})
-    return out
+        hit[0] |= ids
+        best = hit[1]
+        if SEVERITY_RANK[entry["severity"]] > SEVERITY_RANK[best["severity"]]:
+            best["severity"] = entry["severity"]
+            best["summary"] = entry["summary"] or best["summary"]
+        if entry["id"].startswith("GHSA-") and not best["id"].startswith("GHSA-"):
+            best["id"] = entry["id"]
+    return [g[1] for g in groups]
 
 
 def _severity(v):
@@ -302,27 +324,34 @@ def verdict(ev, stale_days=STALE_DAYS, allowed_licenses=None):
     if m.get("archived"):
         reject.append("archived, so no patches will ship")
     if m.get("fork") and m.get("parent"):
-        reject.append(f"fork of {m['parent']}, evaluate the parent instead")
+        # SPEC.md rejects a fork "with a living parent". A fork of an archived
+        # upstream can be the line that is still maintained, so it is read, not rejected.
+        if m.get("parent_archived"):
+            concern.append(f"fork of {m['parent']}, which is archived, so check this fork is the maintained line")
+        else:
+            reject.append(f"fork of {m['parent']}, evaluate the parent instead")
     if not lic:
         reject.append("no license, not safe to depend on")
     elif lic == "NOASSERTION":
         # GitHub found a license file it could not classify. That is not "no
         # license" and it is not "MIT" either, so a person has to read it.
-        concern.append("license file present but not recognised, read it before depending")
-    elif allowed_licenses and lic not in allowed_licenses:
+        concern.append("license file present but not recognised, read it before depending"
+                       + (", it cannot be checked against --license" if allowed_licenses else ""))
+    elif allowed_licenses and lic.casefold() not in {a.casefold() for a in allowed_licenses}:
         reject.append(f"license {lic} is not in the allowed set ({', '.join(sorted(allowed_licenses))})")
 
     advs = ev.get("advisories") or []
     bad = [a["id"] for a in advs if a.get("severity") in ("critical", "high")]
     unknown = [a["id"] for a in advs if a.get("severity") == "unknown"]
-    rest = len(advs) - len(bad) - len(unknown)
+    rest = [a["id"] for a in advs if a["id"] not in bad and a["id"] not in unknown]
     if bad:
         reject.append(f"unpatched advisory in current version, {', '.join(bad[:3])}")
     if unknown:
         concern.append(f"advisory with no published severity, judge it yourself, "
                        f"{', '.join(unknown[:3])}")
     if rest:
-        concern.append(f"{rest} lower-severity advisor{'y' if rest == 1 else 'ies'}")
+        concern.append(f"{len(rest)} lower-severity advisor{'y' if len(rest) == 1 else 'ies'}, "
+                       f"{', '.join(rest[:3])}")
 
     d = m.get("stale_days")
     if d is not None and d > stale_days and not m.get("archived"):
@@ -379,6 +408,7 @@ def _probe(slug, stale_days, allowed_licenses):
         "stars": r.get("stargazers_count"), "forks": r.get("forks_count"),
         "archived": r.get("archived"), "fork": r.get("fork"),
         "parent": (r.get("parent") or {}).get("full_name"),
+        "parent_archived": (r.get("parent") or {}).get("archived"),
         "license": (r.get("license") or {}).get("spdx_id"),
         "pushed_at": r.get("pushed_at"), "stale_days": days_since(r.get("pushed_at")),
         "description": r.get("description"), "watchers": r.get("subscribers_count"),
@@ -419,7 +449,8 @@ def _probe(slug, stale_days, allowed_licenses):
         # "clean". Refusing to ask is the only way to avoid a false all-clear.
         ev["advisories"] = advisories(ecosystem, name, version) if version else None
         if not version:
-            ev["package_reason"] = f"{name} is not published on {ecosystem}"
+            ev["package_reason"] = (f"no published version of {name} resolved on {ecosystem}, "
+                                    "either unpublished or deps.dev did not answer")
     else:
         ev["package"] = None      # publishes no package: OSV has no opinion
         ev["package_reason"] = name
@@ -648,6 +679,37 @@ def selftest():
     # A malformed slug is an error row, not a traceback that loses every other row.
     assert probe("no-slash")["state"] == "error"
 
+    # An allowlist is compared without case: "mit" names the same license as "MIT".
+    assert verdict(ok, allowed_licenses={"mit"})[0] == "ok"
+    # NOASSERTION under an allowlist says it could not be checked.
+    st, why = verdict({"meta": {"license": "NOASSERTION", "stale_days": 1}, "advisories": []},
+                      allowed_licenses={"MIT"})
+    assert st == "concerns" and "--license" in why[0], (st, why)
+
+    # A fork of an archived parent may be the maintained line: read it, do not reject it.
+    dead = {"meta": {"license": "MIT", "fork": True, "parent": "a/b", "parent_archived": True,
+                     "stale_days": 1}, "advisories": []}
+    st, why = verdict(dead)
+    assert st == "concerns" and "archived" in why[0], (st, why)
+
+    # A lower-severity advisory is cited by id, like every other reason.
+    assert "GHSA-y" in verdict(low)[1][0], verdict(low)
+
+    # Alias merge: the rated GHSA wins in either order, and one bug counts once.
+    go = {"id": "GO-2021-0052", "aliases": ["GHSA-h395-qcrw-5vmq"]}
+    gh_ = {"id": "GHSA-h395-qcrw-5vmq", "aliases": ["CVE-2020-28483"],
+           "database_specific": {"severity": "HIGH"}}
+    for order in ([go, gh_], [gh_, go]):
+        m = _merge_advisories(order)
+        assert m == [{"id": "GHSA-h395-qcrw-5vmq", "summary": "", "severity": "high"}], m
+    assert _merge_advisories([{"id": "GHSA-w", "withdrawn": "2024-01-01T00:00:00Z"}]) == []
+
+    # Misplaced options are caught, including the --flag=value form.
+    assert _misplaced(["a/b", "--license", "MIT"]) == ["--license"]
+    assert _misplaced(["a/b", "--stale-days=30"]) == ["--stale-days=30"]
+    assert _misplaced(["nostr relay", "--topic nostr --topic relay"]) == []
+    assert _limit(["q", "--limit", "5"]) == (5, ["q"]) and _limit(["q"]) == (10, ["q"])
+
     # Option parsing: flags come off the front, the rest is left alone.
     o, rest = _options(["--stale-days", "30", "--license", "MIT, Apache-2.0", "a/b"])
     assert o == {"stale_days": 30, "allowed_licenses": {"MIT", "Apache-2.0"}} and rest == ["a/b"], (o, rest)
@@ -656,10 +718,13 @@ def selftest():
     print("selftest ok")
 
 
+OPTIONS = ("--stale-days", "--license")
+
+
 def _options(args):
     """Strip the leading --stale-days / --license options. Returns (opts, rest)."""
     opts = {"stale_days": STALE_DAYS, "allowed_licenses": None}
-    while args and args[0] in ("--stale-days", "--license"):
+    while args and args[0] in OPTIONS:
         if len(args) < 2:
             sys.exit(f"{args[0]} needs a value")
         flag, val, args = args[0], args[1], args[2:]
@@ -668,9 +733,35 @@ def _options(args):
                 opts["stale_days"] = int(val)
             except ValueError:
                 sys.exit(f"--stale-days takes a number of days, not {val!r}")
+            if opts["stale_days"] < 0:
+                sys.exit("--stale-days cannot be negative")
         else:
+            # An empty set would mean "allow everything", so an unset shell variable
+            # would drop the constraint with exit 0. Refuse it instead.
             opts["allowed_licenses"] = {x.strip() for x in val.split(",") if x.strip()}
+            if not opts["allowed_licenses"]:
+                sys.exit("--license needs at least one SPDX id, e.g. MIT,Apache-2.0")
     return opts, args
+
+
+def _misplaced(args):
+    """Options that arrived after the repos or queries. They would otherwise be probed
+    as slugs or searched as words, and the constraint would vanish with exit 0."""
+    return [a for a in args if a.split("=", 1)[0] in OPTIONS]
+
+
+def _limit(rest):
+    """Pull --limit N out of the search arguments. Returns (limit, rest)."""
+    if "--limit" not in rest:
+        return 10, rest
+    i = rest.index("--limit")
+    try:
+        limit = int(rest[i + 1])
+    except (IndexError, ValueError):
+        sys.exit("--limit needs a number")
+    if limit < 1:
+        sys.exit("--limit must be at least 1")
+    return limit, rest[:i] + rest[i + 2:]
 
 
 def main():
@@ -679,22 +770,30 @@ def main():
         sys.exit(__doc__)
     if args[0] == "--selftest":
         return selftest()
+    late = _misplaced(args)
+    if late:
+        sys.exit(f"options go before the repos, --search or --awesome: {' '.join(late)}")
     if args[0] == "--awesome":
         if len(args) < 3:
             sys.exit("usage: probe.py --awesome <ecosystem> <section words>")
+    elif args[0] == "--search":
+        limit, queries = _limit(args[1:])
+        if not queries:
+            sys.exit('usage: probe.py --search "query" ["query" ...] [--limit N]')
+    else:
+        bad = [a for a in args if a.startswith("-")]
+        if bad:
+            sys.exit(f"not a repo slug or a known option: {' '.join(bad)}")
+    if shutil.which("gh") is None:
+        sys.exit("the gh CLI is not installed. Install it and run `gh auth login`.")
+
+    if args[0] == "--awesome":
         src, slugs = awesome(args[1], " ".join(args[2:]))
         if not slugs:
             sys.exit(f"no awesome list for {args[1]!r} had a section matching {' '.join(args[2:])!r}")
         print(f"curated by {src}", file=sys.stderr)
     elif args[0] == "--search":
-        limit, rest = 10, args[1:]
-        if "--limit" in rest:
-            i = rest.index("--limit")
-            if i + 1 >= len(rest) or not rest[i + 1].isdigit():
-                sys.exit("--limit needs a number")
-            limit = int(rest[i + 1])
-            rest = rest[:i] + rest[i + 2:]
-        slugs = search_all(rest, limit)
+        slugs = search_all(queries, limit)
     else:
         slugs = args
     with ThreadPoolExecutor(max_workers=6) as ex:

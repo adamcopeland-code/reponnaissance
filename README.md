@@ -98,6 +98,10 @@ day, and its security line read `not assessed` because it publishes no manifest 
 check. No filter missed it. Every mechanical signal was either clean or absent. It is
 not a relay. It is an HTML page listing other people's relays and where they are.
 
+Two things changed since that run. A license file GitHub cannot classify now reads
+as a concern, so `chorus` comes back `concerns`, license not recognised. And the
+reasons now cite a lower-severity advisory by id, as the summary above does.
+
 The verdict was strfry, pushed three days earlier and the most actively maintained
 of the survivors. Its `not assessed` means the repo publishes no package, so OSV has
 nothing to look up. It does not mean clean. `khatru` is the useful rejection, because it is the name most people

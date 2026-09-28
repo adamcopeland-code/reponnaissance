@@ -31,10 +31,16 @@ problem, not a scheduling problem.
 
 ## How breakage is detected
 
-`.github/workflows/live-check.yml` runs the offline selftest and the live
-acceptance pair on every push and on the 3rd of each month. A red run means an
+`.github/workflows/live-check.yml` runs the offline selftest, the live
+acceptance pair, the option checks and an upstream check on every push to main,
+on pull requests and on the 3rd of each month. The upstream check asks for
+`expressjs/express` and fails if deps.dev, OSV or ecosyste.ms stopped answering,
+because every other assertion reads GitHub fields only. A red run means an
 upstream API drifted or a fixture aged out. Both are usually a ten minute fix.
-There is no other monitoring and none is needed.
+
+A manual run (Actions, live-check, Run workflow) also runs the `field-test` job:
+the README's nostr set and `scripts/benchmark.py`. Run it before a release. There
+is no other monitoring and none is needed.
 
 ## Response policy
 

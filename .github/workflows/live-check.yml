@@ -24,7 +24,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: offline selftest
         run: python3 scripts/probe.py --selftest
       - name: live acceptance pair
@@ -69,9 +69,25 @@ jobs:
           assert out["fiatjaf/khatru"]["state"] == "reject", out["fiatjaf/khatru"]
           print("live option checks ok")
           EOF
+      - name: upstream APIs answer
+        # Every check above reads GitHub fields only, so they stay green while
+        # deps.dev, OSV or ecosyste.ms are down or have changed shape. express
+        # publishes to npm and is widely used, so each source must answer for it.
+        run: |
+          python3 - <<'EOF'
+          import json, subprocess, sys
+          run = subprocess.run([sys.executable, "scripts/probe.py", "expressjs/express"],
+                               capture_output=True, text=True, check=True)
+          e = json.loads(run.stdout)[0]
+          assert (e.get("package") or {}).get("version"), ("deps.dev resolved no version", e)
+          assert e["advisories"] is not None, ("OSV did not answer", e)
+          assert (e.get("adoption") or {}).get("dependent_repos"), ("ecosyste.ms gave no adoption", e)
+          assert e["security"] != "not assessed", e
+          print("upstream APIs ok:", e["package"], e["security"])
+          EOF
 
-  # The broader run. Manual only, because the benchmark spends 18 of GitHub's 30
-  # search requests a minute and reads a dozen repos through four APIs.
+  # The broader run. Manual only, because the benchmark spends 31 search requests
+  # against GitHub's 30 a minute and reads a dozen repos through four APIs.
   field-test:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -80,7 +96,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: README run, nostr relays
         run: |
           python3 - <<'EOF'
@@ -90,9 +106,12 @@ jobs:
                    "permissionlesstech/georelays"]
           run = subprocess.run([sys.executable, "scripts/probe.py", *repos],
                                capture_output=True, text=True, check=True)
-          for r in json.loads(run.stdout):
+          rows = json.loads(run.stdout)
+          for r in rows:
               print(f"{r['repo']:32} {r['state']:9} {r.get('security', '-'):16} "
-                    f"{'; '.join(r['reasons'][:2])}")
+                    f"{' | '.join(r['reasons'][:2])}")
+          errors = [r["repo"] for r in rows if r["state"] == "error"]
+          assert not errors, f"probe errors, not evidence: {errors}"
           EOF
       - name: benchmark
         run: python3 scripts/benchmark.py
